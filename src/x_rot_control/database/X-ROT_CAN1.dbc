@@ -1,0 +1,141 @@
+VERSION ""
+
+
+NS_ : 
+	NS_DESC_
+	CM_
+	BA_DEF_
+	BA_
+	VAL_
+	CAT_DEF_
+	CAT_
+	FILTER
+	BA_DEF_DEF_
+	EV_DATA_
+	ENVVAR_DATA_
+	SGTYPE_
+	SGTYPE_VAL_
+	BA_DEF_SGTYPE_
+	BA_SGTYPE_
+	SIG_TYPE_REF_
+	VAL_TABLE_
+	SIG_GROUP_
+	SIG_VALTYPE_
+	SIGTYPE_VALTYPE_
+	BO_TX_BU_
+	BA_DEF_REL_
+	BA_REL_
+	BA_DEF_DEF_REL_
+	BU_SG_REL_
+	BU_EV_REL_
+	BU_BO_REL_
+	SG_MUL_VAL_
+
+BS_:
+
+BU_:
+
+
+BO_ 645 Vehicle_info: 2 Vector__XXX
+ SG_ LIn_Speed : 7|8@0+ (1,0) [0|0] "" Vector__XXX
+ SG_ Ang_Speed : 15|8@0+ (1,0) [0|0] "" Vector__XXX
+
+BO_ 145 sim_LocalPlannerPathRequest: 2 Vector__XXX
+ SG_ Distance : 7|16@0+ (0.0153,0) [0|0] "cm" Vector__XXX
+
+BO_ 262 sim_LocalPlanner: 8 Vector__XXX
+ SG_ Steering_Request : 63|8@0+ (1,0) [0|0] "" Vector__XXX
+ SG_ Speed_Request : 55|8@0+ (1,0) [0|0] "" Vector__XXX
+ SG_ Closes_Obst_Orient : 39|16@0+ (0.0055,0) [0|0] "deg" Vector__XXX
+ SG_ Closes_Obst_Dist : 23|16@0+ (0.0061,0) [0|0] "cm" Vector__XXX
+ SG_ Request_Control : 7|1@0+ (1,0) [0|1] "" Vector__XXX
+ SG_ Allarm_ON : 6|1@0+ (1,0) [0|0] "" Vector__XXX
+
+BO_ 772 Vehicle_Pose: 8 Vector__XXX
+ SG_ ang : 55|16@0+ (0.0055,0) [0|0] "deg" Vector__XXX
+ SG_ Y : 31|24@0+ (0.35,0) [0|0] "m" Vector__XXX
+ SG_ X : 7|24@0+ (0.35,0) [0|0] "m" Vector__XXX
+
+BO_ 1680 PathPoint_custom: 8 Vector__XXX
+ SG_ ang : 55|16@0+ (0.0055,0) [0|0] "deg" Vector__XXX
+ SG_ Y : 31|24@0+ (0.35,0) [0|0] "m" Vector__XXX
+ SG_ X : 7|24@0+ (0.35,0) [0|0] "m" Vector__XXX
+
+BO_ 1552 PathPoint_10: 8 Vector__XXX
+ SG_ ang : 55|16@0+ (0.0055,0) [0|0] "deg" Vector__XXX
+ SG_ Y : 31|24@0+ (0.35,0) [0|0] "m" Vector__XXX
+ SG_ X : 7|24@0+ (0.35,0) [0|0] "m" Vector__XXX
+
+BO_ 1424 PathPoint_9: 8 Vector__XXX
+ SG_ ang : 55|16@0+ (0.0055,0) [0|0] "deg" Vector__XXX
+ SG_ Y : 31|24@0+ (0.35,0) [0|0] "m" Vector__XXX
+ SG_ X : 7|24@0+ (0.35,0) [0|0] "m" Vector__XXX
+
+BO_ 1296 PathPoint_8: 8 Vector__XXX
+ SG_ ang : 55|16@0+ (0.0055,0) [0|0] "deg" Vector__XXX
+ SG_ Y : 31|24@0+ (0.35,0) [0|0] "m" Vector__XXX
+ SG_ X : 7|24@0+ (0.35,0) [0|0] "m" Vector__XXX
+
+BO_ 1168 PathPoint_7: 8 Vector__XXX
+ SG_ ang : 55|16@0+ (0.0055,0) [0|0] "deg" Vector__XXX
+ SG_ Y : 31|24@0+ (0.35,0) [0|0] "m" Vector__XXX
+ SG_ X : 7|24@0+ (0.35,0) [0|0] "m" Vector__XXX
+
+BO_ 1040 PathPoint_6: 8 Vector__XXX
+ SG_ ang : 55|16@0+ (0.0055,0) [0|0] "deg" Vector__XXX
+ SG_ Y : 31|24@0+ (0.35,0) [0|0] "m" Vector__XXX
+ SG_ X : 7|24@0+ (0.35,0) [0|0] "m" Vector__XXX
+
+BO_ 912 PathPoint_5: 8 Vector__XXX
+ SG_ ang : 55|16@0+ (0.0055,0) [0|0] "deg" Vector__XXX
+ SG_ Y : 31|24@0+ (0.35,0) [0|0] "m" Vector__XXX
+ SG_ X : 7|24@0+ (0.35,0) [0|0] "m" Vector__XXX
+
+BO_ 784 PathPoint_4: 8 Vector__XXX
+ SG_ ang : 55|16@0+ (0.0055,0) [0|0] "deg" Vector__XXX
+ SG_ Y : 31|24@0+ (0.35,0) [0|0] "m" Vector__XXX
+ SG_ X : 7|24@0+ (0.35,0) [0|0] "m" Vector__XXX
+
+BO_ 656 PathPoint_3: 8 Vector__XXX
+ SG_ ang : 55|16@0+ (0.0055,0) [0|0] "deg" Vector__XXX
+ SG_ Y : 31|24@0+ (0.35,0) [0|0] "m" Vector__XXX
+ SG_ X : 7|24@0+ (0.35,0) [0|0] "m" Vector__XXX
+
+BO_ 528 PathPoint_2: 8 Vector__XXX
+ SG_ ang : 55|16@0+ (0.0055,0) [0|0] "deg" Vector__XXX
+ SG_ Y : 31|24@0+ (0.35,0) [0|0] "m" Vector__XXX
+ SG_ X : 7|24@0+ (0.35,0) [0|0] "m" Vector__XXX
+
+BO_ 400 PathPoint_1: 8 Vector__XXX
+ SG_ ang : 55|16@0+ (0.0055,0) [0|0] "deg" Vector__XXX
+ SG_ Y : 31|24@0+ (0.35,0) [0|0] "m" Vector__XXX
+ SG_ X : 7|24@0+ (0.35,0) [0|0] "m" Vector__XXX
+
+BO_ 144 LocalPlannerPathRequest: 2 Vector__XXX
+ SG_ Distance : 7|16@0+ (0.0153,0) [0|0] "cm" Vector__XXX
+
+BO_ 261 LocalPlanner: 8 Vector__XXX
+ SG_ Steering_Request : 63|8@0+ (1,0) [0|0] "" Vector__XXX
+ SG_ Speed_Request : 55|8@0+ (1,0) [0|0] "" Vector__XXX
+ SG_ Closes_Obst_Orient : 39|16@0+ (0.0055,0) [0|0] "deg" Vector__XXX
+ SG_ Closes_Obst_Dist : 23|16@0+ (0.0061,0) [0|0] "cm" Vector__XXX
+ SG_ Request_Control : 1|1@0+ (1,0) [0|1] "" Vector__XXX
+ SG_ Allarm_ON : 0|1@0+ (1,0) [0|0] "" Vector__XXX
+
+
+
+BA_DEF_  "BusType" STRING ;
+BA_DEF_ BU_  "NodeLayerModules" STRING ;
+BA_DEF_ BU_  "ECU" STRING ;
+BA_DEF_ BU_  "CANoeJitterMax" INT 0 0;
+BA_DEF_ BU_  "CANoeJitterMin" INT 0 0;
+BA_DEF_ BU_  "CANoeDrift" INT 0 0;
+BA_DEF_ BU_  "CANoeStartDelay" INT 0 0;
+BA_DEF_DEF_  "BusType" "";
+BA_DEF_DEF_  "NodeLayerModules" "";
+BA_DEF_DEF_  "ECU" "";
+BA_DEF_DEF_  "CANoeJitterMax" 0;
+BA_DEF_DEF_  "CANoeJitterMin" 0;
+BA_DEF_DEF_  "CANoeDrift" 0;
+BA_DEF_DEF_  "CANoeStartDelay" 0;
+
