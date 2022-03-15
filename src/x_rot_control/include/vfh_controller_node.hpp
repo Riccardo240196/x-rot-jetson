@@ -16,6 +16,11 @@
 #include <radar_pa_msgs/radar_msg.h> 
 #include <eigen3/Eigen/Dense>
 
+#include <sensor_msgs/PointCloud2.h>
+#include <pcl_conversions/pcl_conversions.h>
+#include <pcl/point_cloud.h>
+#include <pcl/point_types.h>
+
 using namespace std;
 using namespace Eigen;
 #define _USE_MATH_DEFINES
@@ -33,6 +38,7 @@ private:
     ros::Subscriber path_point_sub_; 
     ros::Subscriber radar_points_sub_; 
     ros::Publisher  local_planner_pub_;
+    ros::Publisher  cloud_pub_;
     
     double robot_pose_x; 
     double robot_pose_y; 
@@ -59,6 +65,9 @@ private:
     double pers_time_th;
     double pers_dist_th;
     int consensus_th;
+
+    sensor_msgs::PointCloud2 debug_map;
+    pcl::PointCloud<pcl::PointXYZ> debug_cloud;
         
     void initializeSubscribers(); 
     void initializePublishers();

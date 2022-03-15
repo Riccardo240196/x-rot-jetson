@@ -12,6 +12,7 @@ find_package(catkin REQUIRED
   rospy
   geometry_msgs
   radar_pa_msgs
+  pcl_ros
 )
 
 

@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+
+<launch>
+
+  <!-- testing mode params -->
+  <arg name="bagpath" default=""/>
+
+  <param name="/use_sim_time" value="true" />
+
+  <!-- static TF -->
+  <include file="$(find x_rot_control)/launch/xrot_tf.launch"/>
+
+  <!-- environment setup -->
+  <node pkg="rosbag" type="play" name="play" args="--clock -l -r 1 '$(arg bagpath)' "></node>
+
+  <node pkg="x_rot_control" type="vfh_controller_node" name="vfh_controller" output="screen"/>
+
+  
+</launch>

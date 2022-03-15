@@ -24,9 +24,11 @@ VFHController::VFHController(ros::NodeHandle* nodehandle):nh_(*nodehandle)
     pers_index = 0;
     node_frequency = 10;
     pers_time_th = 5;
-    pers_dist_th = 0.2;
-    consensus_th = 2;
-    
+    pers_dist_th = 0.5;
+    consensus_th = 1;
+
+    debug_cloud.height = 1;   
+        
 }
 
 void VFHController::initializeSubscribers()
@@ -39,6 +41,7 @@ void VFHController::initializeSubscribers()
 void VFHController::initializePublishers()
 {
     local_planner_pub_ = nh_.advertise<geometry_msgs::Twist>("/x_rot/cmd_vel", 1, true); 
+    cloud_pub_ = nh_.advertise<sensor_msgs::PointCloud2> ("/debug_output", 1);
 }
 
 void VFHController::robotPoseCallback(const nav_msgs::Odometry& msg) {
@@ -84,6 +87,7 @@ void VFHController::pathPointCallback(const nav_msgs::Odometry& msg) {
 void VFHController::radarPointsCallback(const radar_pa_msgs::radar_msg& msg) {
     // spacchetta i messagi del radar e trasforma i punti in X e Y
     Matrix<double, 3, 1> temp;
+    // pcl::PointXYZ point;
 
     meas_raw_x.clear();
     meas_raw_y.clear();
@@ -92,17 +96,13 @@ void VFHController::radarPointsCallback(const radar_pa_msgs::radar_msg& msg) {
         temp(0) = msg.data_A[i].distance*cos(msg.data_A[i].angle);
         temp(1) = msg.data_A[i].distance*sin(msg.data_A[i].angle);
         temp(2) = 1;
-        
+                
         temp = map_to_vehicle*vehicle_to_radar*temp;
 
         meas_raw_x.push_back(temp(0));
         meas_raw_y.push_back(temp(1));      
 
     }  
-    // aggiorna i timer delle righe non nulle
-    // elimina le righe che hanno superato il limite del timer
-    // estrai righe non nulle e restituisci le matrici delle misure filtrate
-
     
 }
 void VFHController::update_pers_map(){
@@ -143,8 +143,13 @@ void VFHController::update_pers_map(){
     }
 
     vector<double> null={-1, -1, -1, -1};
+    pcl::PointXYZ point;
     meas_x_filtered.clear();
     meas_y_filtered.clear();
+    
+    debug_cloud.points.clear();
+    debug_cloud.width = 0;
+
     Matrix<double, 3, 1> temp;
 
     for(int i=0; i<=pers_index; i++){
@@ -161,10 +166,20 @@ void VFHController::update_pers_map(){
 
             meas_x_filtered.push_back(temp(0));
             meas_y_filtered.push_back(temp(1));
+
+            point.x = temp(0);
+            point.y = temp(1);
+            point.z = 0.0;
+
+            debug_cloud.points.push_back(point);
+            debug_cloud.width++; 
         }
     }
-   
 
+    pcl::toROSMsg(debug_cloud,debug_map);  
+    debug_map.header.frame_id = "radar";
+    debug_map.header.stamp = ros::Time::now();  
+    cloud_pub_.publish (debug_map);
 }
 
 void VFHController::normpdf(const std::vector<int>& sector_array, int sector_index, double gaussian_weight, std::vector<double>& norm_distribution) {
@@ -454,7 +469,6 @@ int main(int argc, char** argv)
     ros::NodeHandle nh; 
 
     VFHController VFHController(&nh); 
-    
     ros::Rate loop_rate(VFHController.node_frequency);
     while (ros::ok())
     {
