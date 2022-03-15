@@ -21,6 +21,8 @@
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
 
+#include <sensor_msgs/LaserScan.h>
+
 using namespace std;
 using namespace Eigen;
 #define _USE_MATH_DEFINES
@@ -36,7 +38,7 @@ private:
     ros::NodeHandle nh_; 
     ros::Subscriber robot_pose_sub_; 
     ros::Subscriber path_point_sub_; 
-    ros::Subscriber radar_points_sub_; 
+    ros::Subscriber radar_points_sub_,radar_points_sub_2; 
     ros::Publisher  local_planner_pub_;
     ros::Publisher  cloud_pub_;
     
@@ -75,6 +77,7 @@ private:
     void robotPoseCallback(const nav_msgs::Odometry& msg); 
     void pathPointCallback(const nav_msgs::Odometry& msg); 
     void radarPointsCallback(const radar_pa_msgs::radar_msg& msg); 
+    void radarPointsCallback_2(const sensor_msgs::LaserScan& msg); 
 	
     void normpdf(const std::vector<int>& sector_array, int sector_index, double gaussian_weight, std::vector<double>& norm_distribution);
     int findSectorIdx(double direction, float sector_limits_up[]);

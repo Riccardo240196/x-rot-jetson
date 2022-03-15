@@ -11,6 +11,8 @@ VFHController::VFHController(ros::NodeHandle* nodehandle):nh_(*nodehandle)
     lateral_dist = -1;
     ctrl_word = 0;
 
+    // vehicle_to_radar = Matrix<double, 3, 3>::Identity();
+
     vehicle_to_radar << 1, 0, 0.65,
                         0, 1, 0,
                         0, 0, 1;   
@@ -24,7 +26,7 @@ VFHController::VFHController(ros::NodeHandle* nodehandle):nh_(*nodehandle)
     pers_index = 0;
     node_frequency = 10;
     pers_time_th = 5;
-    pers_dist_th = 0.5;
+    pers_dist_th = 0.2;
     consensus_th = 1;
 
     debug_cloud.height = 1;   
@@ -33,9 +35,10 @@ VFHController::VFHController(ros::NodeHandle* nodehandle):nh_(*nodehandle)
 
 void VFHController::initializeSubscribers()
 {
-    robot_pose_sub_ = nh_.subscribe("/can_odometry", 1, &VFHController::robotPoseCallback,this);  
+    robot_pose_sub_ = nh_.subscribe("/yape/odom_diffdrive", 1, &VFHController::robotPoseCallback,this);  
     path_point_sub_ = nh_.subscribe("/path_point", 1, &VFHController::pathPointCallback,this);  
-    radar_points_sub_ = nh_.subscribe("/radar_messages", 1, &VFHController::radarPointsCallback,this);  
+    radar_points_sub_ = nh_.subscribe("/radar_messages", 1, &VFHController::radarPointsCallback,this);
+    radar_points_sub_2 = nh_.subscribe("/radar_scan", 1, &VFHController::radarPointsCallback_2,this);  
 }
 
 void VFHController::initializePublishers()
@@ -105,9 +108,39 @@ void VFHController::radarPointsCallback(const radar_pa_msgs::radar_msg& msg) {
     }  
     
 }
+
+void VFHController::radarPointsCallback_2(const sensor_msgs::LaserScan& msg){
+    // spacchetta i messagi del radar e trasforma i punti in X e Y
+    Matrix<double, 3, 1> temp;
+    // pcl::PointXYZ point;
+
+    meas_raw_x.clear();
+    meas_raw_y.clear();
+
+    double angle_min = msg.angle_min;
+    double angle_increment = msg.angle_increment;
+    double angle=angle_min;
+
+    for(int i = 0; i< msg.ranges.size(); i++){
+        if(!isinf(msg.ranges[i])){
+            temp(0) = msg.ranges[i]*cos(angle);
+            temp(1) = msg.ranges[i]*sin(angle);
+            temp(2) = 1;
+                    
+            temp = map_to_vehicle*vehicle_to_radar*temp;
+
+            meas_raw_x.push_back(temp(0));
+            meas_raw_y.push_back(temp(1));  
+
+        }
+
+        angle+=angle_increment; 
+    }  
+}
 void VFHController::update_pers_map(){
     // add new measurements to pers_map
     for(int i=0;i<meas_raw_x.size(); i++){
+
         close_points.clear();
         int closest_point = -1;
         double dist;
@@ -115,9 +148,9 @@ void VFHController::update_pers_map(){
         double diff_y;
         double min_dist = 100;
         // check existence
-        for(int ind=0; ind<300; ind++){
-            diff_x = pers_map[i][0] - meas_raw_x[i];
-            diff_y = pers_map[i][1] - meas_raw_y[i];
+        for(int ind=0; ind<pers_index; ind++){
+            diff_x = pers_map[ind][0] - meas_raw_x[i];
+            diff_y = pers_map[ind][1] - meas_raw_y[i];
             dist = sqrt(diff_x*diff_x + diff_y*diff_y);
             if(dist< pers_dist_th){
                 close_points.push_back(ind);
@@ -125,7 +158,6 @@ void VFHController::update_pers_map(){
                     closest_point = ind;
                 }
             }
-            
         }
         
         vector<double> to_insert = {meas_raw_x[i], meas_raw_y[i], 0, 0};
@@ -133,7 +165,7 @@ void VFHController::update_pers_map(){
             pers_map[closest_point] = to_insert;
         else{
             pers_map[pers_index] = to_insert;
-            if(pers_index+1<pers_map.size())
+            if((pers_index+1)<pers_map.size())
                 pers_index++;
         }
         for (int j=0; j<close_points.size(); j++){
@@ -152,9 +184,9 @@ void VFHController::update_pers_map(){
 
     Matrix<double, 3, 1> temp;
 
-    for(int i=0; i<=pers_index; i++){
+    for(int i=0; i<pers_index; i++){
         pers_map[i][2]++;
-        if(pers_map[i][2]*1/node_frequency > pers_time_th){
+        if(pers_map[i][2]/node_frequency > pers_time_th){
             pers_map.erase(pers_map.begin()+i);
             pers_map.push_back(null);
             pers_index --;
@@ -162,10 +194,11 @@ void VFHController::update_pers_map(){
         }
         else if(pers_map[i][3]>= consensus_th){
             temp << pers_map[i][0], pers_map[i][1], 1;
+            
             temp = map_to_vehicle.inverse()*temp;
 
             meas_x_filtered.push_back(temp(0));
-            meas_y_filtered.push_back(temp(1));
+            meas_y_filtered.push_back(temp(1));            
 
             point.x = temp(0);
             point.y = temp(1);
@@ -177,7 +210,7 @@ void VFHController::update_pers_map(){
     }
 
     pcl::toROSMsg(debug_cloud,debug_map);  
-    debug_map.header.frame_id = "radar";
+    debug_map.header.frame_id = "laser_frame";
     debug_map.header.stamp = ros::Time::now();  
     cloud_pub_.publish (debug_map);
 }
