@@ -47,10 +47,22 @@ private:
 	double lateral_dist;
 	int num_of_sector = 180;
 
+    float obstacle_weight = 0.98;
+    float target_dir_weight = 0.01;
+    float prev_dir_weight = 0.01;
+    float max_detection_dist = 8; // [m] distance that triggers the avoidance manouver (defined in vehicle frame)
+    float stop_distance = 0.8; // [m] minimum distance to stop the vehicle (defined in vehicle frame)
+    float sector_width = 360/(float)num_of_sector;
+    float gaussian_weight_coeff = 0.5;
+    float robot_radius = 0.6; // [m]
+    float speed_upper_lim = 0.3; // [m/s]
+
 	bool ctrl_word;
 	double direction;
+    double prev_direction;
 	double min_dist;
 	double speed_cmd;
+    double speed_cmd_prev;
 
     vector<double> meas_raw_x;
     vector<double> meas_raw_y;
@@ -77,9 +89,10 @@ private:
     void radarPointsCallback(const radar_pa_msgs::radar_msg& msg); 
 	
     void normpdf(const std::vector<int>& sector_array, int sector_index, double gaussian_weight, std::vector<double>& norm_distribution);
-    int findSectorIdx(double direction, float sector_limits_up[]);
-	void buildDirectionCost(std::vector<double>& cost_vec, int sector_index, double gaussian_shift, std::vector<int>& sector_array, double gaussian_weight);
-	    
+    int findSectorIdx(double angle, float sector_limits_up[]);
+	void buildCost(std::vector<double>& cost_vec, int sector_index, double gaussian_shift, std::vector<int>& sector_array, double gaussian_weight, int w1, double w2);
+	double findGaussianWeight(double coeff[]);
+   
 }; 
 
 #endif  

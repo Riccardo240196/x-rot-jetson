@@ -227,7 +227,7 @@ class xrot_position_control:
         
     def run(self):
         rospy.init_node('xrot_position_control', anonymous=True)
-        self.sub_cmd_vel = rospy.Subscriber('yape/cmd_vel',Twist,self.cmd_vel_cbk)
+        self.sub_cmd_vel = rospy.Subscriber('x_rot/cmd_vel',Twist,self.cmd_vel_cbk)
         rate = rospy.Rate(50)
 
         while not rospy.is_shutdown():
