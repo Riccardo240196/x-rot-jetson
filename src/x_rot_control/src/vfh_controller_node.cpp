@@ -12,15 +12,15 @@ VFHController::VFHController(ros::NodeHandle* nodehandle):nh_(*nodehandle)
     ctrl_word = 0;
 	direction = 0;
     prev_direction = 0;
-	min_dist = 100;
 	speed_cmd = 0;
     speed_cmd_prev = 0;
+    direction_gain = 0.5;
 
-    // vehicle_to_radar = Matrix<double, 3, 3>::Identity();
+    vehicle_to_radar = Matrix<double, 3, 3>::Identity();
 
-    vehicle_to_radar << 1, 0, 0.65,
-                        0, 1, 0,
-                        0, 0, 1;   
+    // vehicle_to_radar << 1, 0, 0.65,
+    //                     0, 1, 0,
+    //                     0, 0, 1;   
     
     map_to_vehicle = Matrix<double, 3, 3>::Identity();
     
@@ -48,7 +48,7 @@ void VFHController::initializeSubscribers()
 
 void VFHController::initializePublishers()
 {
-    local_planner_pub_ = nh_.advertise<geometry_msgs::Twist>("/x_rot/cmd_vel", 1, true); 
+    local_planner_pub_ = nh_.advertise<geometry_msgs::Twist>("/yape/cmd_vel", 1, true); 
     cloud_pub_ = nh_.advertise<sensor_msgs::PointCloud2> ("/debug_output", 1);
 }
 
@@ -67,13 +67,37 @@ void VFHController::robotPoseCallback(const nav_msgs::Odometry& msg) {
 
     map_to_vehicle << cos(yaw), -sin(yaw), robot_pose_x,
                       sin(yaw), cos(yaw), robot_pose_y,
-                      0, 0, 1;   
+                      0, 0, 1; 
+    
+    pathPointFake();
 }
 
 void VFHController::pathPointCallback(const nav_msgs::Odometry& msg) {
 
     double path_point_x = msg.pose.pose.position.x;
     double path_point_y = msg.pose.pose.position.y;
+
+    double delta_x = path_point_x - robot_pose_x;
+    double delta_y = path_point_y - robot_pose_y;
+    ref_direction = 180/M_PI*(atan2(delta_y,delta_x) - robot_pose_theta);
+
+    double dist_from_point = sqrt(pow(delta_x,2) + pow(delta_y,2));
+    double ang = atan2(delta_y,delta_x);
+    lateral_dist = abs(dist_from_point*cos(ang));
+    if(dist_from_point<0.5)
+        lateral_dist = 0.0;
+
+    if (ref_direction<0)
+        ref_direction = 360 + ref_direction;     
+
+    if (ctrl_word==0)
+        lateral_dist = -1;
+}
+
+void VFHController::pathPointFake() {
+
+    double path_point_x = 30;
+    double path_point_y = 0;
 
     double delta_x = path_point_x - robot_pose_x;
     double delta_y = path_point_y - robot_pose_y;
@@ -237,7 +261,7 @@ void VFHController::normpdf(const std::vector<int>& sector_array, int sector_ind
 
 int VFHController::findSectorIdx(double angle, float sector_limits_up[]) {
     int sector_index = num_of_sector;
-    if (angle>=sector_limits_up[num_of_sector]) {
+    if (angle>=sector_limits_up[num_of_sector-1]) {
         sector_index = 0;
     } else {
         for (int j=0; j<num_of_sector; j++) {
@@ -253,26 +277,23 @@ int VFHController::findSectorIdx(double angle, float sector_limits_up[]) {
 void VFHController::buildCost(std::vector<double>& cost_vec, int sector_index, double gaussian_shift, std::vector<int>& sector_array, double gaussian_weight, int w1, double w2) {
     double sector_value = sector_index-gaussian_shift;
     for (int j=0; j<num_of_sector; j++) {
-        sector_array[j] = sector_value + j - 1;
+        sector_array[j] = sector_value + j ; // - 1
     }
     
     std::vector<double> gaussian_distribution(num_of_sector);
     normpdf(sector_array,sector_index,gaussian_weight,gaussian_distribution);
-    for (int i=0; i<num_of_sector; i++) 
-        gaussian_distribution[i] = gaussian_distribution[i]*gaussian_weight;
-
     int max_idx = round(*max_element(sector_array.begin(), sector_array.end()));
     if (max_idx < num_of_sector) {
-        int start_ind = num_of_sector - max_idx;
+        int start_ind = num_of_sector - max_idx - 1;
         for (int j=0; j<max_idx; j++) {
             cost_vec[j] = w1 + w2*gaussian_distribution[j+start_ind];
         }
         
         for (int j=max_idx; j<num_of_sector; j++) {
-            cost_vec[j] = w1 + w2*gaussian_distribution[j-max_idx];
+            cost_vec[j] = w1 + w2*gaussian_distribution[j-max_idx-1];
         }
     } else {
-        int start_ind = max_idx-num_of_sector;
+        int start_ind = max_idx-num_of_sector+1;
         for (int j=0; j<start_ind; j++) {
             cost_vec[j] = w1 + w2*gaussian_distribution[j+(num_of_sector-start_ind)];
         }
@@ -289,7 +310,13 @@ double VFHController::findGaussianWeight(double coeff[]) {
 }
 
 void VFHController::vfhController() {
-    
+    int data_length = meas_x_filtered.size();
+    direction = 0;
+    speed_cmd = 0;
+
+    if(data_length==0)
+        return;
+
     float min_lateral_dist = 0.2; // [m]
     if (lateral_dist < min_lateral_dist) {
         target_dir_weight = 0.01;
@@ -301,20 +328,25 @@ void VFHController::vfhController() {
         
     // Add circles to x,y points
     int circle_points = 90;
-    int data_length = meas_x_filtered.size();//*(1+circle_points);
     double measures_x[data_length*(1+circle_points)];
     double measures_y[data_length*(1+circle_points)];
-    
+    double x_value = 1000;
+    double y_value = 1000;
     for (int i=0; i<data_length; i++) {
         if (meas_x_filtered[i]!=0 && meas_y_filtered[i]!=0) {
-            measures_x[i+i*circle_points] = meas_x_filtered[i];
-            measures_y[i+i*circle_points] = meas_y_filtered[i];
-            for (int j=1; j<circle_points+1; j++) {      
-                measures_x[i+i*circle_points+j] = meas_x_filtered[i] + robot_radius*cos(2*M_PI*(double)j/(double)circle_points);
-                measures_y[i+i*circle_points+j] = meas_y_filtered[i] + robot_radius*sin(2*M_PI*(double)j/(double)circle_points);
-            }
+            x_value = meas_x_filtered[i];
+            y_value = meas_y_filtered[i];
+        } else {
+            x_value = 1000;
+            y_value = 1000;
         }
-    }   
+        measures_x[i+i*circle_points] = x_value;
+        measures_y[i+i*circle_points] = y_value;
+        for (int j=1; j<circle_points+1; j++) {      
+            measures_x[i+i*circle_points+j] = x_value + robot_radius*cos(2*M_PI*(double)j/(double)circle_points);
+            measures_y[i+i*circle_points+j] = y_value + robot_radius*sin(2*M_PI*(double)j/(double)circle_points);
+        }
+    }  
 
     // define sector limits 
     size_t data_size = sizeof(measures_x)/sizeof(measures_x[0]);
@@ -327,9 +359,9 @@ void VFHController::vfhController() {
         sector_limits_up[i] = sector_mean + sector_width/2;
         sector_limits_down[i] = sector_mean - sector_width/2;
     }
- 
+
     // associate euclidean distance to each sector
-    std::vector<double> dist_to_associate(data_size,100);
+    std::vector<double> dist_to_associate(num_of_sector,100);
     int sector_index = 0;
     for (int i=0; i<data_size; i++) {
         double eucl_dist = sqrt(pow(measures_x[i],2) + pow(measures_y[i],2));
@@ -349,7 +381,8 @@ void VFHController::vfhController() {
     double min_dist_2 = *min_element(dist_to_associate.end()-ang_lim, dist_to_associate.end());
     if (min_dist_2 < min_dist)
         min_dist = min_dist_2;
-        
+       
+
     bool stop = 0;
     if (min_dist < stop_distance) {
         stop = 1;
@@ -373,17 +406,21 @@ void VFHController::vfhController() {
     
     if (stop) {
         speed_cmd = 0;
-    } else {
+    } 
+    else {
         if (min_dist <= 1) {
             speed_cmd = (m * (1 - dist_lower_lim));
         } else {
             speed_cmd = (m * (min_dist - dist_lower_lim));
-            speed_cmd = speed_cmd_prev + 0.02*(speed_cmd-speed_cmd_prev); 
         }
     }
     if (speed_cmd > speed_upper_lim)
         speed_cmd = speed_upper_lim;
     
+    if( abs(speed_cmd-speed_cmd_prev)*node_frequency > linear_speed_lim){
+        double sign = (speed_cmd-speed_cmd_prev)/abs(speed_cmd-speed_cmd_prev);
+        speed_cmd = speed_cmd_prev + sign*linear_speed_lim/node_frequency;
+    }
     speed_cmd_prev = speed_cmd;
     
     // BUILD COSTS
@@ -404,38 +441,47 @@ void VFHController::vfhController() {
        
     // build target direction cost
     sector_index = findSectorIdx(ref_direction,sector_limits_up);
-    buildCost(cost_target,sector_index,gaussian_shift,sector_array,gaussian_weight_target/2,1,-1);
+    buildCost(cost_target,sector_index,gaussian_shift,sector_array,gaussian_weight_target/2,1,-gaussian_weight_target/2);
     
     // build previous direction cost
-    double prev_direction = direction;
     sector_index = findSectorIdx(prev_direction,sector_limits_up);
-    buildCost(cost_prev,sector_index,gaussian_shift,sector_array,gaussian_weight_prev_dir/2,1,-1);
+    buildCost(cost_prev,sector_index,gaussian_shift,sector_array,gaussian_weight_prev_dir/2,1,-gaussian_weight_target/2);
     
     // build obstacle cost and overall cost
-    for (int i=0; i<num_of_sector; i++) {
-        double cost = 1/dist_to_associate[i];
-        buildCost(cost_obst,i,gaussian_shift,sector_array,gaussian_weight_obs,0,cost);
-        cost_obstacle[i] = std::accumulate(cost_obst.begin(), cost_obst.end(), 0.0);
-        overall_cost[i] = obstacle_weight * cost_obstacle[i] + target_dir_weight * cost_target[i] + prev_dir_weight * cost_prev[i];
+    for (int k=0; k<num_of_sector; k++) {
+        std::vector<double> cost_obst_full;
+        for (int i=0; i<num_of_sector; i++) {
+            double cost = 1/dist_to_associate[i];
+            buildCost(cost_obst,i,gaussian_shift,sector_array,gaussian_weight_obs,0,cost);
+            cost_obst_full.push_back(cost_obst[k]);
+        }
+        cost_obstacle[k] = std::accumulate(cost_obst_full.begin(), cost_obst_full.end(), 0.0);
+        overall_cost[k] = obstacle_weight * cost_obstacle[k] + target_dir_weight * cost_target[k] + prev_dir_weight * cost_prev[k];
     }
-    
+  
     // get min cost and direction
     std::vector<int> vec;
-    std::vector<int> vec_diff;
+    std::vector<int> vec_idx;
     float bound_ang = 40; // deg
     int boundaries[2] = {int(bound_ang/sector_width), num_of_sector - int(bound_ang/sector_width)};    
     
     for (int i=1; i<num_of_sector; i++) {
-        if (abs(overall_cost[i] - overall_cost[i-1])>1e-4)
+        if (abs(overall_cost[i] - overall_cost[i-1])>1e-5)
             vec.push_back(i-1);
     }
-    for (int i=1; i<vec.size(); i++) 
-        vec_diff.push_back(abs(vec[i]-vec[i-1]));
+    
+    for (int i=0; i<vec.size()-1; i++) {
+        if (abs(vec[i+1]-vec[i]) > 1) {
+            vec_idx.push_back(i);
+            vec_idx.push_back(i+1);
+        }
+    }
 
-    sort(vec_diff.begin(), vec_diff.end(), greater<int>());
-    if (vec_diff.size()==2) {
-        boundaries[0] = min(vec_diff[1],int(bound_ang/sector_width));
-        boundaries[1] = max(vec_diff[0],num_of_sector - int(bound_ang/sector_width));     
+    for (int i=0; i<vec_idx.size(); i++) {
+        if (vec[vec_idx[i]] < boundaries[0]) 
+            boundaries[0] = vec[vec_idx[i]];
+        else if (vec[vec_idx[i]] > boundaries[1])
+            boundaries[1] = vec[vec_idx[i]];
     }
     
     for (int i=1; i<num_of_sector; i++) {
@@ -443,7 +489,8 @@ void VFHController::vfhController() {
             overall_cost[i]=1000;
     }
     int idx = min_element(overall_cost.begin(), overall_cost.end()) - overall_cost.begin();
-    
+
+  
     if (stop)
         direction = 0;
     else if (ctrl_word)
@@ -451,12 +498,19 @@ void VFHController::vfhController() {
     else
         direction = 0;
 
-    direction = prev_direction + 0.1*(direction-prev_direction); 
-
+    if (direction > 180)
+        direction = direction - 360;
+    
+    if( abs(direction-prev_direction)*node_frequency > direction_speed_lim){
+        double sign = (direction-prev_direction)/abs(direction-prev_direction);
+        direction = prev_direction + sign*direction_speed_lim/node_frequency;
+    }
+    
+    prev_direction = direction;
     geometry_msgs::Twist planner_msg;
     planner_msg.linear.x = speed_cmd;
-    planner_msg.linear.z = ctrl_word;
-    planner_msg.angular.z = direction;
+    // planner_msg.linear.z = ctrl_word;
+    planner_msg.angular.z = direction_gain*direction*M_PI/180.0;
     local_planner_pub_.publish(planner_msg);
 
 }
@@ -482,3 +536,5 @@ int main(int argc, char** argv)
 
     return 0;
 } 
+
+

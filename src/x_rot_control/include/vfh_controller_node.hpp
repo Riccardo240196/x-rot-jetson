@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string>
 #include <vector>
+#include <numeric>
 
 #include <ros/ros.h> 
 #include <tf/tf.h>
@@ -57,12 +58,13 @@ private:
     float sector_width = 360/(float)num_of_sector;
     float gaussian_weight_coeff = 0.5;
     float robot_radius = 0.6; // [m]
-    float speed_upper_lim = 0.3; // [m/s]
+    float speed_upper_lim = 0.5; // [m/s]
+    double direction_speed_lim = 5;
+    double linear_speed_lim = 1;
 
 	bool ctrl_word;
 	double direction;
     double prev_direction;
-	double min_dist;
 	double speed_cmd;
     double speed_cmd_prev;
 
@@ -79,6 +81,7 @@ private:
     double pers_time_th;
     double pers_dist_th;
     int consensus_th;
+    double direction_gain;
 
     sensor_msgs::PointCloud2 debug_map;
     pcl::PointCloud<pcl::PointXYZ> debug_cloud;
@@ -90,6 +93,7 @@ private:
     void pathPointCallback(const nav_msgs::Odometry& msg); 
     void radarPointsCallback(const radar_pa_msgs::radar_msg& msg); 
     void radarPointsCallback_2(const sensor_msgs::LaserScan& msg); 
+    void pathPointFake();
 	
     void normpdf(const std::vector<int>& sector_array, int sector_index, double gaussian_weight, std::vector<double>& norm_distribution);
     int findSectorIdx(double angle, float sector_limits_up[]);
@@ -99,3 +103,4 @@ private:
 }; 
 
 #endif  
+
