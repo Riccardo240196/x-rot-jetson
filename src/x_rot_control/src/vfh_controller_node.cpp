@@ -309,6 +309,22 @@ double VFHController::findGaussianWeight(double coeff[]) {
     return gaussian_weight;
 }
 
+int VFHController::search_closest(const std::vector<int>& sorted_array, int value) {
+
+    auto it = lower_bound(sorted_array.begin(), sorted_array.end(), value);
+    if (it == sorted_array.end())
+        return sorted_array.back();   // return last element
+    auto found = *it;
+    if (it != sorted_array.begin())
+    {
+        auto found2 = *(--it);
+        if (abs(value - found2) < abs(value - found))
+            found = found2;
+    }
+    return found;
+
+}
+
 void VFHController::vfhController() {
     int data_length = meas_x_filtered.size();
     direction = 0;
@@ -333,12 +349,12 @@ void VFHController::vfhController() {
     double x_value = 1000;
     double y_value = 1000;
     for (int i=0; i<data_length; i++) {
-        if (meas_x_filtered[i]!=0 && meas_y_filtered[i]!=0) {
-            x_value = meas_x_filtered[i];
-            y_value = meas_y_filtered[i];
-        } else {
+         if (meas_x_filtered[i]==0 && meas_y_filtered[i]==0) {
             x_value = 1000;
             y_value = 1000;
+        } else {
+            x_value = meas_x_filtered[i];
+            y_value = meas_y_filtered[i];
         }
         measures_x[i+i*circle_points] = x_value;
         measures_y[i+i*circle_points] = y_value;
@@ -461,28 +477,28 @@ void VFHController::vfhController() {
   
     // get min cost and direction
     std::vector<int> vec;
-    std::vector<int> vec_idx;
+    std::vector<int> bounds;
     float bound_ang = 40; // deg
     int boundaries[2] = {int(bound_ang/sector_width), num_of_sector - int(bound_ang/sector_width)};    
     
     for (int i=1; i<num_of_sector; i++) {
-        if (abs(overall_cost[i] - overall_cost[i-1])>1e-5)
+        if (abs(overall_cost[i] - overall_cost[i-1])>1e-4)
             vec.push_back(i-1);
     }
     
     for (int i=0; i<vec.size()-1; i++) {
         if (abs(vec[i+1]-vec[i]) > 1) {
-            vec_idx.push_back(i);
-            vec_idx.push_back(i+1);
+            bounds.push_back(vec[i]);
+            bounds.push_back(vec[i+1]);
         }
     }
-
-    for (int i=0; i<vec_idx.size(); i++) {
-        if (vec[vec_idx[i]] < boundaries[0]) 
-            boundaries[0] = vec[vec_idx[i]];
-        else if (vec[vec_idx[i]] > boundaries[1])
-            boundaries[1] = vec[vec_idx[i]];
-    }
+   
+    int bound_1 = search_closest(bounds,boundaries[0]);
+    int bound_2 = search_closest(bounds,boundaries[1]);
+    if (bound_1 < boundaries[0] && bound_1!=0) 
+        boundaries[0] = bound_1;
+    if (bound_2 > boundaries[1] && bound_2!=num_of_sector)
+        boundaries[1] = bound_2;
     
     for (int i=1; i<num_of_sector; i++) {
         if (i>boundaries[0] && i<boundaries[1])

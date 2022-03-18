@@ -99,6 +99,7 @@ private:
     int findSectorIdx(double angle, float sector_limits_up[]);
 	void buildCost(std::vector<double>& cost_vec, int sector_index, double gaussian_shift, std::vector<int>& sector_array, double gaussian_weight, int w1, double w2);
 	double findGaussianWeight(double coeff[]);
+    int search_closest(const std::vector<int>& sorted_array, int value);
    
 }; 
 
