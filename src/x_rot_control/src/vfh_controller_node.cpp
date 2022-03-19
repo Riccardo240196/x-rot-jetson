@@ -30,7 +30,7 @@ VFHController::VFHController(ros::NodeHandle* nodehandle):nh_(*nodehandle)
     }
     pers_index = 0;
     node_frequency = 10;
-    pers_time_th = 5;
+    pers_time_th = 1.5;
     pers_dist_th = 0.2;
     consensus_th = 1;
 
@@ -43,13 +43,15 @@ void VFHController::initializeSubscribers()
     robot_pose_sub_ = nh_.subscribe("/yape/odom_diffdrive", 1, &VFHController::robotPoseCallback,this);  
     path_point_sub_ = nh_.subscribe("/path_point", 1, &VFHController::pathPointCallback,this);  
     radar_points_sub_ = nh_.subscribe("/radar_messages", 1, &VFHController::radarPointsCallback,this);
-    radar_points_sub_2 = nh_.subscribe("/radar_scan", 1, &VFHController::radarPointsCallback_2,this);  
+    radar_points_sub_2 = nh_.subscribe("/radar", 1, &VFHController::radarPointsCallback_2,this);  
 }
 
 void VFHController::initializePublishers()
 {
     local_planner_pub_ = nh_.advertise<geometry_msgs::Twist>("/yape/cmd_vel", 1, true); 
-    cloud_pub_ = nh_.advertise<sensor_msgs::PointCloud2> ("/debug_output", 1);
+    cloud_pub_ = nh_.advertise<sensor_msgs::PointCloud2> ("/map_debug_output", 1);
+    overall_cost_pub_ = nh_.advertise<std_msgs::Float64MultiArray> ("/cost_debug_output", 1);
+    debug_pub_ = nh_.advertise<std_msgs::Float64MultiArray> ("/var_debug_output", 1);
 }
 
 void VFHController::robotPoseCallback(const nav_msgs::Odometry& msg) {
@@ -96,8 +98,11 @@ void VFHController::pathPointCallback(const nav_msgs::Odometry& msg) {
 
 void VFHController::pathPointFake() {
 
-    double path_point_x = 30;
-    double path_point_y = 0;
+    double path_point_x = 30;  // 30
+    double path_point_y = 2;   // 0
+
+    goal_x = path_point_x;
+    goal_y = path_point_y;
 
     double delta_x = path_point_x - robot_pose_x;
     double delta_y = path_point_y - robot_pose_y;
@@ -105,14 +110,18 @@ void VFHController::pathPointFake() {
 
     double dist_from_point = sqrt(pow(delta_x,2) + pow(delta_y,2));
     double ang = atan2(delta_y,delta_x);
-    lateral_dist = abs(dist_from_point*cos(ang));
-    if(dist_from_point<0.5)
-        lateral_dist = 0.0;
+    // lateral_dist = abs(dist_from_point*cos(ang));
+    lateral_dist = abs(dist_from_point*sin(ang)); // FOR GAZEBO. Otherwise uncomment line above
+    // std::cout << "lateral_dist : " << lateral_dist << std::endl;
+    // if(dist_from_point<0.5)
+    //     lateral_dist = 0.0;
 
     if (ref_direction<0)
         ref_direction = 360 + ref_direction;     
 
-    if (ctrl_word==0)
+    // std::cout << "ref_direction : " << ref_direction << std::endl;
+
+    if (ctrl_word==0 || dist_from_point<0.2)
         lateral_dist = -1;
 }
 
@@ -166,6 +175,7 @@ void VFHController::radarPointsCallback_2(const sensor_msgs::LaserScan& msg){
         angle+=angle_increment; 
     }  
 }
+
 void VFHController::update_pers_map(){
     // add new measurements to pers_map
     for(int i=0;i<meas_raw_x.size(); i++){
@@ -330,16 +340,17 @@ void VFHController::vfhController() {
     direction = 0;
     speed_cmd = 0;
 
-    if(data_length==0)
+    if(data_length==0 && lateral_dist<0)
         return;
 
     float min_lateral_dist = 0.2; // [m]
+    // float min_obj_dist = 1; // [m]
     if (lateral_dist < min_lateral_dist) {
         target_dir_weight = 0.01;
-        prev_dir_weight = 0.015;
+        prev_dir_weight = 0.02;
     } else {
         prev_dir_weight = 0.01;
-        target_dir_weight = 0.015;
+        target_dir_weight = 0.02;
     }
         
     // Add circles to x,y points
@@ -392,7 +403,7 @@ void VFHController::vfhController() {
     }
     
     // get min distance
-    int ang_lim = round(15/sector_width); // deg
+    int ang_lim = round(25/sector_width); // deg
     double min_dist = *min_element(dist_to_associate.begin(), dist_to_associate.begin()+ang_lim);
     double min_dist_2 = *min_element(dist_to_associate.end()-ang_lim, dist_to_associate.end());
     if (min_dist_2 < min_dist)
@@ -474,6 +485,12 @@ void VFHController::vfhController() {
         cost_obstacle[k] = std::accumulate(cost_obst_full.begin(), cost_obst_full.end(), 0.0);
         overall_cost[k] = obstacle_weight * cost_obstacle[k] + target_dir_weight * cost_target[k] + prev_dir_weight * cost_prev[k];
     }
+
+    std_msgs::Float64MultiArray overall_cost_debug;
+    for (int i=0; i<num_of_sector; i++) {
+        overall_cost_debug.data.push_back(overall_cost[i]);
+    }
+    overall_cost_pub_.publish(overall_cost_debug);
   
     // get min cost and direction
     std::vector<int> vec;
@@ -481,31 +498,33 @@ void VFHController::vfhController() {
     float bound_ang = 40; // deg
     int boundaries[2] = {int(bound_ang/sector_width), num_of_sector - int(bound_ang/sector_width)};    
     
-    for (int i=1; i<num_of_sector; i++) {
-        if (abs(overall_cost[i] - overall_cost[i-1])>1e-4)
-            vec.push_back(i-1);
-    }
-    
-    for (int i=0; i<vec.size()-1; i++) {
-        if (abs(vec[i+1]-vec[i]) > 1) {
-            bounds.push_back(vec[i]);
-            bounds.push_back(vec[i+1]);
+    if (ctrl_word && min_dist<max_detection_dist) {
+
+        for (int i=1; i<num_of_sector; i++) {
+            if (abs(overall_cost[i] - overall_cost[i-1])>1e-4)
+                vec.push_back(i-1);
         }
-    }
-   
-    int bound_1 = search_closest(bounds,boundaries[0]);
-    int bound_2 = search_closest(bounds,boundaries[1]);
-    if (bound_1 < boundaries[0] && bound_1!=0) 
-        boundaries[0] = bound_1;
-    if (bound_2 > boundaries[1] && bound_2!=num_of_sector)
-        boundaries[1] = bound_2;
+        
+        for (int i=0; i<vec.size()-1; i++) {
+            if (abs(vec[i+1]-vec[i]) > 1) {
+                bounds.push_back(vec[i]);
+                bounds.push_back(vec[i+1]);
+            }
+        }
     
+        int bound_1 = search_closest(bounds,boundaries[0]);
+        int bound_2 = search_closest(bounds,boundaries[1]);
+        if (bound_1 < boundaries[0] && bound_1!=0) 
+            boundaries[0] = bound_1;
+        if (bound_2 > boundaries[1] && bound_2!=num_of_sector)
+            boundaries[1] = bound_2;
+    }
+
     for (int i=1; i<num_of_sector; i++) {
         if (i>boundaries[0] && i<boundaries[1])
             overall_cost[i]=1000;
     }
     int idx = min_element(overall_cost.begin(), overall_cost.end()) - overall_cost.begin();
-
   
     if (stop)
         direction = 0;
@@ -521,12 +540,34 @@ void VFHController::vfhController() {
         double sign = (direction-prev_direction)/abs(direction-prev_direction);
         direction = prev_direction + sign*direction_speed_lim/node_frequency;
     }
+
+    // std::cout << "direction : " << direction << std::endl;
+    // std::cout << "ctrl_word : " << ctrl_word << std::endl;
+    // std::cout << "min_dist : " << min_dist << std::endl;
+    // std::cout << "boundaries[0] : " << boundaries[0] << std::endl;
+    // std::cout << "boundaries[1] : " << boundaries[1] << std::endl;
+
+    std_msgs::Float64MultiArray var_debug;
+    var_debug.data.push_back(ctrl_word);
+    var_debug.data.push_back(min_dist);
+    var_debug.data.push_back(lateral_dist);
+    var_debug.data.push_back(ref_direction);
+    var_debug.data.push_back(direction);
+    var_debug.data.push_back(speed_cmd);
+    var_debug.data.push_back(boundaries[0]);
+    var_debug.data.push_back(boundaries[1]);
+    var_debug.data.push_back(goal_x);
+    var_debug.data.push_back(goal_y);
+    debug_pub_.publish(var_debug);
     
     prev_direction = direction;
+
+    // va aggiunto il controllo sulla somma delle velocità.
+    double angular_speed = direction_gain*direction*M_PI/180.0;
     geometry_msgs::Twist planner_msg;
     planner_msg.linear.x = speed_cmd;
     // planner_msg.linear.z = ctrl_word;
-    planner_msg.angular.z = direction_gain*direction*M_PI/180.0;
+    planner_msg.angular.z = angular_speed;
     local_planner_pub_.publish(planner_msg);
 
 }

@@ -13,6 +13,7 @@ find_package(catkin REQUIRED
   geometry_msgs
   radar_pa_msgs
   pcl_ros
+  std_msgs
 )
 
 
@@ -52,8 +53,7 @@ find_package(catkin REQUIRED
 ## Generate messages in the 'msg' folder
 # add_message_files(
 #   FILES
-#   Message1.msg
-#   Message2.msg
+#   Array.msg
 # )
 
 ## Generate services in the 'srv' folder
@@ -113,6 +113,7 @@ catkin_package(
     rospy
     geometry_msgs
     radar_pa_msgs
+    std_msgs
 #  INCLUDE_DIRS include 
 #  LIBRARIES x_rot_control
 #  CATKIN_DEPENDS other_catkin_pkg
@@ -178,9 +179,9 @@ target_link_libraries(vfh_controller_node ${catkin_LIBRARIES})
 
 ## Mark executables for installation
 ## See http://docs.ros.org/melodic/api/catkin/html/howto/format1/building_executables.html
-# install(TARGETS ${PROJECT_NAME}_node
-#   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
-# )
+install(TARGETS vfh_controller_node
+  RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
 
 ## Mark libraries for installation
 ## See http://docs.ros.org/melodic/api/catkin/html/howto/format1/building_libraries.html

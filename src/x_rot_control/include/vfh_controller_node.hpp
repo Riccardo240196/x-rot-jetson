@@ -13,6 +13,7 @@
 
 //message types 
 #include <geometry_msgs/Twist.h> 
+#include <std_msgs/Float64MultiArray.h> 
 #include <nav_msgs/Odometry.h> 
 #include <radar_pa_msgs/radar_msg.h> 
 #include <eigen3/Eigen/Dense>
@@ -42,6 +43,8 @@ private:
     ros::Subscriber radar_points_sub_,radar_points_sub_2; 
     ros::Publisher  local_planner_pub_;
     ros::Publisher  cloud_pub_;
+    ros::Publisher  overall_cost_pub_;
+    ros::Publisher  debug_pub_;
     
     double robot_pose_x; 
     double robot_pose_y; 
@@ -59,7 +62,7 @@ private:
     float gaussian_weight_coeff = 0.5;
     float robot_radius = 0.6; // [m]
     float speed_upper_lim = 0.5; // [m/s]
-    double direction_speed_lim = 5;
+    double direction_speed_lim = 10;
     double linear_speed_lim = 1;
 
 	bool ctrl_word;
@@ -67,6 +70,9 @@ private:
     double prev_direction;
 	double speed_cmd;
     double speed_cmd_prev;
+
+    double goal_x;
+    double goal_y;
 
     vector<double> meas_raw_x;
     vector<double> meas_raw_y;
