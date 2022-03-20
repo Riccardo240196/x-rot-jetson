@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 #include <numeric>
+#include <chrono>
 
 #include <ros/ros.h> 
 #include <tf/tf.h>
@@ -52,6 +53,9 @@ private:
 	double ref_direction;
 	double lateral_dist;
 	int num_of_sector = 180;
+    float sector_mean = 0;
+    std::vector<float> sector_limits_up;   
+    std::vector<float> sector_limits_down; 
 
     float obstacle_weight = 0.98;
     float target_dir_weight = 0.01;
@@ -62,7 +66,7 @@ private:
     float gaussian_weight_coeff = 0.5;
     float robot_radius = 0.6; // [m]
     float speed_upper_lim = 0.5; // [m/s]
-    double direction_speed_lim = 10;
+    double direction_speed_lim = 5;
     double linear_speed_lim = 1;
 
 	bool ctrl_word;
@@ -102,7 +106,7 @@ private:
     void pathPointFake();
 	
     void normpdf(const std::vector<int>& sector_array, int sector_index, double gaussian_weight, std::vector<double>& norm_distribution);
-    int findSectorIdx(double angle, float sector_limits_up[]);
+    int findSectorIdx(double angle);
 	void buildCost(std::vector<double>& cost_vec, int sector_index, double gaussian_shift, std::vector<int>& sector_array, double gaussian_weight, int w1, double w2);
 	double findGaussianWeight(double coeff[]);
     int search_closest(const std::vector<int>& sorted_array, int value);

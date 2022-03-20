@@ -15,6 +15,12 @@ VFHController::VFHController(ros::NodeHandle* nodehandle):nh_(*nodehandle)
 	speed_cmd = 0;
     speed_cmd_prev = 0;
     direction_gain = 0.5;
+     
+    for (int i=0; i<num_of_sector; i++) {
+        sector_mean = i*sector_width;
+        sector_limits_up.push_back(sector_mean + sector_width/2);
+        sector_limits_down.push_back(sector_mean - sector_width/2);
+    }
 
     vehicle_to_radar = Matrix<double, 3, 3>::Identity();
 
@@ -30,9 +36,9 @@ VFHController::VFHController(ros::NodeHandle* nodehandle):nh_(*nodehandle)
     }
     pers_index = 0;
     node_frequency = 10;
-    pers_time_th = 1.5;
+    pers_time_th = 1;
     pers_dist_th = 0.2;
-    consensus_th = 1;
+    consensus_th = 3;
 
     debug_cloud.height = 1;   
         
@@ -98,8 +104,8 @@ void VFHController::pathPointCallback(const nav_msgs::Odometry& msg) {
 
 void VFHController::pathPointFake() {
 
-    double path_point_x = 30;  // 30
-    double path_point_y = 2;   // 0
+    double path_point_x = 25;  // 30
+    double path_point_y = 0;   // 0
 
     goal_x = path_point_x;
     goal_y = path_point_y;
@@ -121,7 +127,7 @@ void VFHController::pathPointFake() {
 
     // std::cout << "ref_direction : " << ref_direction << std::endl;
 
-    if (ctrl_word==0 || dist_from_point<0.2)
+    if (ctrl_word==0 || dist_from_point<0.3)
         lateral_dist = -1;
 }
 
@@ -269,7 +275,7 @@ void VFHController::normpdf(const std::vector<int>& sector_array, int sector_ind
   }
 }
 
-int VFHController::findSectorIdx(double angle, float sector_limits_up[]) {
+int VFHController::findSectorIdx(double angle) {
     int sector_index = num_of_sector;
     if (angle>=sector_limits_up[num_of_sector-1]) {
         sector_index = 0;
@@ -286,13 +292,17 @@ int VFHController::findSectorIdx(double angle, float sector_limits_up[]) {
 
 void VFHController::buildCost(std::vector<double>& cost_vec, int sector_index, double gaussian_shift, std::vector<int>& sector_array, double gaussian_weight, int w1, double w2) {
     double sector_value = sector_index-gaussian_shift;
+    int max_idx = -1000;
     for (int j=0; j<num_of_sector; j++) {
         sector_array[j] = sector_value + j ; // - 1
+        if (sector_array[j]>max_idx)
+            max_idx = sector_array[j];
     }
     
     std::vector<double> gaussian_distribution(num_of_sector);
     normpdf(sector_array,sector_index,gaussian_weight,gaussian_distribution);
-    int max_idx = round(*max_element(sector_array.begin(), sector_array.end()));
+    // int max_idx2 = round(*max_element(sector_array.begin(), sector_array.end()));
+    // std::cout << "max_idx: " << max_idx << ", max_idx2: " << max_idx2 << endl;
     if (max_idx < num_of_sector) {
         int start_ind = num_of_sector - max_idx - 1;
         for (int j=0; j<max_idx; j++) {
@@ -340,10 +350,10 @@ void VFHController::vfhController() {
     direction = 0;
     speed_cmd = 0;
 
-    if(data_length==0 && lateral_dist<0)
+    if(data_length==0 && ctrl_word==0)
         return;
 
-    float min_lateral_dist = 0.2; // [m]
+    float min_lateral_dist = 0.1; // [m]
     // float min_obj_dist = 1; // [m]
     if (lateral_dist < min_lateral_dist) {
         target_dir_weight = 0.01;
@@ -377,15 +387,6 @@ void VFHController::vfhController() {
 
     // define sector limits 
     size_t data_size = sizeof(measures_x)/sizeof(measures_x[0]);
-    
-    float sector_mean = 0;
-    float sector_limits_up[num_of_sector];   
-    float sector_limits_down[num_of_sector];   
-    for (int i=0; i<num_of_sector; i++) {
-        sector_mean = i*sector_width;
-        sector_limits_up[i] = sector_mean + sector_width/2;
-        sector_limits_down[i] = sector_mean - sector_width/2;
-    }
 
     // associate euclidean distance to each sector
     std::vector<double> dist_to_associate(num_of_sector,100);
@@ -396,12 +397,12 @@ void VFHController::vfhController() {
         if (ang < 0) 
             ang = ang + 360;
         
-        sector_index = findSectorIdx(ang,sector_limits_up);
+        sector_index = findSectorIdx(ang);
         if (dist_to_associate[sector_index] > eucl_dist) 
             dist_to_associate[sector_index] = eucl_dist;
         
     }
-    
+
     // get min distance
     int ang_lim = round(25/sector_width); // deg
     double min_dist = *min_element(dist_to_associate.begin(), dist_to_associate.begin()+ang_lim);
@@ -409,7 +410,6 @@ void VFHController::vfhController() {
     if (min_dist_2 < min_dist)
         min_dist = min_dist_2;
        
-
     bool stop = 0;
     if (min_dist < stop_distance) {
         stop = 1;
@@ -465,15 +465,16 @@ void VFHController::vfhController() {
     double gaussian_weight_prev_dir = findGaussianWeight(coeff);
     double coeff2[4] = {0.369389785763626,3.64914690021850,-0.216102762982391,-3.84497580829445};
     double gaussian_weight_obs = findGaussianWeight(coeff2)*gaussian_weight_coeff;
-       
+    
     // build target direction cost
-    sector_index = findSectorIdx(ref_direction,sector_limits_up);
+    sector_index = findSectorIdx(ref_direction);
     buildCost(cost_target,sector_index,gaussian_shift,sector_array,gaussian_weight_target/2,1,-gaussian_weight_target/2);
     
     // build previous direction cost
-    sector_index = findSectorIdx(prev_direction,sector_limits_up);
+    sector_index = findSectorIdx(prev_direction);
     buildCost(cost_prev,sector_index,gaussian_shift,sector_array,gaussian_weight_prev_dir/2,1,-gaussian_weight_target/2);
-    
+
+    auto start(std::chrono::high_resolution_clock::now());
     // build obstacle cost and overall cost
     for (int k=0; k<num_of_sector; k++) {
         std::vector<double> cost_obst_full;
@@ -485,6 +486,9 @@ void VFHController::vfhController() {
         cost_obstacle[k] = std::accumulate(cost_obst_full.begin(), cost_obst_full.end(), 0.0);
         overall_cost[k] = obstacle_weight * cost_obstacle[k] + target_dir_weight * cost_target[k] + prev_dir_weight * cost_prev[k];
     }
+    auto end(std::chrono::high_resolution_clock::now());
+    auto duration(std::chrono::duration_cast<std::chrono::milliseconds>(end - start));
+    std::cout << "obstacle cost duration: " << duration.count() << " ms\n";
 
     std_msgs::Float64MultiArray overall_cost_debug;
     for (int i=0; i<num_of_sector; i++) {
@@ -584,10 +588,12 @@ int main(int argc, char** argv)
     while (ros::ok())
     {
         ros::spinOnce();
-        
         VFHController.update_pers_map();
+        // auto start(std::chrono::high_resolution_clock::now());
         VFHController.vfhController();
-    
+        // auto end(std::chrono::high_resolution_clock::now());
+        // auto duration(std::chrono::duration_cast<std::chrono::milliseconds>(end - start));
+        // std::cout << "Duration: " << duration.count() << " ms\n";
         loop_rate.sleep();
     }
 
