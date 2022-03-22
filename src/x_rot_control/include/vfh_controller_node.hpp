@@ -64,9 +64,9 @@ private:
     float stop_distance = 0.8; // [m] minimum distance to stop the vehicle (defined in vehicle frame)
     float sector_width = 360/(float)num_of_sector;
     float gaussian_weight_coeff = 0.5;
-    float robot_radius = 0.6; // [m]
+    float robot_radius = 1.2; // [m]
     float speed_upper_lim = 0.5; // [m/s]
-    double direction_speed_lim = 5;
+    double direction_speed_lim = 10;
     double linear_speed_lim = 1;
 
 	bool ctrl_word;

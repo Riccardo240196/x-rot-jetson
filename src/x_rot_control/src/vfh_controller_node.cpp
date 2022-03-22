@@ -36,9 +36,9 @@ VFHController::VFHController(ros::NodeHandle* nodehandle):nh_(*nodehandle)
     }
     pers_index = 0;
     node_frequency = 10;
-    pers_time_th = 1;
+    pers_time_th = 5;
     pers_dist_th = 0.2;
-    consensus_th = 3;
+    consensus_th = 2;
 
     debug_cloud.height = 1;   
         
@@ -353,7 +353,7 @@ void VFHController::vfhController() {
     if(data_length==0 && ctrl_word==0)
         return;
 
-    float min_lateral_dist = 0.1; // [m]
+    float min_lateral_dist = 0.2; // [m]
     // float min_obj_dist = 1; // [m]
     if (lateral_dist < min_lateral_dist) {
         target_dir_weight = 0.01;
@@ -364,7 +364,7 @@ void VFHController::vfhController() {
     }
         
     // Add circles to x,y points
-    int circle_points = 90;
+    int circle_points = 120;
     double measures_x[data_length*(1+circle_points)];
     double measures_y[data_length*(1+circle_points)];
     double x_value = 1000;
@@ -474,21 +474,32 @@ void VFHController::vfhController() {
     sector_index = findSectorIdx(prev_direction);
     buildCost(cost_prev,sector_index,gaussian_shift,sector_array,gaussian_weight_prev_dir/2,1,-gaussian_weight_target/2);
 
-    auto start(std::chrono::high_resolution_clock::now());
     // build obstacle cost and overall cost
-    for (int k=0; k<num_of_sector; k++) {
-        std::vector<double> cost_obst_full;
-        for (int i=0; i<num_of_sector; i++) {
-            double cost = 1/dist_to_associate[i];
-            buildCost(cost_obst,i,gaussian_shift,sector_array,gaussian_weight_obs,0,cost);
-            cost_obst_full.push_back(cost_obst[k]);
-        }
-        cost_obstacle[k] = std::accumulate(cost_obst_full.begin(), cost_obst_full.end(), 0.0);
-        overall_cost[k] = obstacle_weight * cost_obstacle[k] + target_dir_weight * cost_target[k] + prev_dir_weight * cost_prev[k];
+    int idx_plus,idx_minus, idx_plusplus, idx_minmin, idx_plusplus2, idx_minmin2;
+    for (int i=0; i<num_of_sector; i++) {
+        idx_plus = i+1;
+        idx_minus = i-1;
+        idx_plusplus = i+2;
+        idx_minmin = i-2;
+        idx_plusplus2 = i+3;
+        idx_minmin2 = i-3;
+        if (idx_plus>num_of_sector-1) idx_plus=0;
+        if (idx_minus<0) idx_minus=num_of_sector-1;
+
+        if (idx_plusplus>num_of_sector-1) idx_plusplus=0;
+        if (idx_plusplus>num_of_sector) idx_plusplus=1;
+        if (idx_minmin<0) idx_minmin=num_of_sector-1;
+        if (idx_minmin<-1) idx_minmin=num_of_sector-2;
+
+        if (idx_plusplus2>num_of_sector-1) idx_plusplus2=0;
+        if (idx_plusplus2>num_of_sector) idx_plusplus2=1;
+        if (idx_plusplus2>num_of_sector+1) idx_plusplus2=2;
+        if (idx_minmin2<0) idx_minmin2=num_of_sector-1;
+        if (idx_minmin2<-1) idx_minmin2=num_of_sector-2;
+        if (idx_minmin2<-2) idx_minmin2=num_of_sector-3;
+        cost_obstacle[i] = (1/dist_to_associate[i] + 1/dist_to_associate[idx_plus] + 1/dist_to_associate[idx_minus] + 1/dist_to_associate[idx_plusplus] + 1/dist_to_associate[idx_minmin] + 1/dist_to_associate[idx_plusplus2] + 1/dist_to_associate[idx_minmin2]) / 3;
+        overall_cost[i] = obstacle_weight * cost_obstacle[i] + target_dir_weight * cost_target[i] + prev_dir_weight * cost_prev[i];   
     }
-    auto end(std::chrono::high_resolution_clock::now());
-    auto duration(std::chrono::duration_cast<std::chrono::milliseconds>(end - start));
-    std::cout << "obstacle cost duration: " << duration.count() << " ms\n";
 
     std_msgs::Float64MultiArray overall_cost_debug;
     for (int i=0; i<num_of_sector; i++) {
@@ -588,12 +599,16 @@ int main(int argc, char** argv)
     while (ros::ok())
     {
         ros::spinOnce();
-        VFHController.update_pers_map();
         // auto start(std::chrono::high_resolution_clock::now());
+        auto start = std::chrono::steady_clock::now();
+        VFHController.update_pers_map();
         VFHController.vfhController();
         // auto end(std::chrono::high_resolution_clock::now());
-        // auto duration(std::chrono::duration_cast<std::chrono::milliseconds>(end - start));
-        // std::cout << "Duration: " << duration.count() << " ms\n";
+        // auto duration = std::chrono::duration_cast<double>(end - start);
+        // std::cout << "Duration: " << duration<< " ms\n";
+        auto end = std::chrono::steady_clock::now();
+        std::chrono::duration<double> diff = end - start;
+        std::cout << "Duration [seconds]: " << diff.count() << std::endl;
         loop_rate.sleep();
     }
 
