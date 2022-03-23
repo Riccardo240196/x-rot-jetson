@@ -30,15 +30,15 @@ VFHController::VFHController(ros::NodeHandle* nodehandle):nh_(*nodehandle)
     
     map_to_vehicle = Matrix<double, 3, 3>::Identity();
     
-    vector<double> temp = {-1, -1, -1, -1};
-    for(int i=0; i<300; i++){
-        pers_map.push_back(temp);
-    }
+    // vector<double> temp = {-1, -1, -1, -1};
+    // for(int i=0; i<300; i++){
+    //     pers_map.push_back(temp);
+    // }
     pers_index = 0;
     node_frequency = 10;
     pers_time_th = 5;
-    pers_dist_th = 0.2;
-    consensus_th = 2;
+    pers_dist_th = 0.1;
+    consensus_th = 1;
 
     debug_cloud.height = 1;   
         
@@ -184,6 +184,8 @@ void VFHController::radarPointsCallback_2(const sensor_msgs::LaserScan& msg){
 
 void VFHController::update_pers_map(){
     // add new measurements to pers_map
+    cout<< "num of raw points "<< meas_raw_x.size()<<endl;
+    cout<<"pers_index pre "<< pers_map.size()<<endl;
     for(int i=0;i<meas_raw_x.size(); i++){
 
         close_points.clear();
@@ -193,25 +195,27 @@ void VFHController::update_pers_map(){
         double diff_y;
         double min_dist = 100;
         // check existence
-        for(int ind=0; ind<pers_index; ind++){
+        for(int ind=0; ind<pers_map.size(); ind++){
             diff_x = pers_map[ind][0] - meas_raw_x[i];
             diff_y = pers_map[ind][1] - meas_raw_y[i];
             dist = sqrt(diff_x*diff_x + diff_y*diff_y);
-            if(dist< pers_dist_th){
+            if(dist< pers_dist_th ){
                 close_points.push_back(ind);
                 if(dist<min_dist){
                     closest_point = ind;
                 }
             }
         }
-        
         vector<double> to_insert = {meas_raw_x[i], meas_raw_y[i], 0, 0};
-        if(closest_point!=-1)
-            pers_map[closest_point] = to_insert;
-        else{
-            pers_map[pers_index] = to_insert;
-            if((pers_index+1)<pers_map.size())
-                pers_index++;
+        // if(closest_point!=-1)
+        //     pers_map[closest_point] = to_insert;
+        // else{
+        //     pers_map[pers_index] = to_insert;
+        //     if((pers_index+1)<pers_map.size())
+        //         pers_index++;
+        // }
+        if(close_points.size()==0){
+            pers_map.push_back(to_insert);
         }
         for (int j=0; j<close_points.size(); j++){
             pers_map[close_points[j]][3]++; 
@@ -219,6 +223,7 @@ void VFHController::update_pers_map(){
         
     }
 
+    cout<<"pers_index post insert "<< pers_map.size()<<endl;
     vector<double> null={-1, -1, -1, -1};
     pcl::PointXYZ point;
     meas_x_filtered.clear();
@@ -229,12 +234,10 @@ void VFHController::update_pers_map(){
 
     Matrix<double, 3, 1> temp;
 
-    for(int i=0; i<pers_index; i++){
+    for(int i=0; i<pers_map.size(); i++){
         pers_map[i][2]++;
         if(pers_map[i][2]/node_frequency > pers_time_th){
             pers_map.erase(pers_map.begin()+i);
-            pers_map.push_back(null);
-            pers_index --;
             i--;
         }
         else if(pers_map[i][3]>= consensus_th){
@@ -253,6 +256,7 @@ void VFHController::update_pers_map(){
             debug_cloud.width++; 
         }
     }
+    cout<<"pers_index post "<< pers_map.size()<<endl;
 
     pcl::toROSMsg(debug_cloud,debug_map);  
     debug_map.header.frame_id = "laser_frame";
@@ -608,11 +612,13 @@ int main(int argc, char** argv)
         // std::cout << "Duration: " << duration<< " ms\n";
         auto end = std::chrono::steady_clock::now();
         std::chrono::duration<double> diff = end - start;
-        std::cout << "Duration [seconds]: " << diff.count() << std::endl;
+        // std::cout << "Duration [seconds]: " << diff.count() << std::endl;
         loop_rate.sleep();
     }
 
     return 0;
 } 
+
+
 
 
