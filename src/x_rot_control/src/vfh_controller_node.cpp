@@ -184,8 +184,8 @@ void VFHController::radarPointsCallback_2(const sensor_msgs::LaserScan& msg){
 
 void VFHController::update_pers_map(){
     // add new measurements to pers_map
-    cout<< "num of raw points "<< meas_raw_x.size()<<endl;
-    cout<<"pers_index pre "<< pers_map.size()<<endl;
+    // cout<< "num of raw points "<< meas_raw_x.size()<<endl;
+    // cout<<"pers_index pre "<< pers_map.size()<<endl;
     for(int i=0;i<meas_raw_x.size(); i++){
 
         close_points.clear();
@@ -223,7 +223,7 @@ void VFHController::update_pers_map(){
         
     }
 
-    cout<<"pers_index post insert "<< pers_map.size()<<endl;
+    // cout<<"pers_index post insert "<< pers_map.size()<<endl;
     vector<double> null={-1, -1, -1, -1};
     pcl::PointXYZ point;
     meas_x_filtered.clear();
@@ -256,7 +256,7 @@ void VFHController::update_pers_map(){
             debug_cloud.width++; 
         }
     }
-    cout<<"pers_index post "<< pers_map.size()<<endl;
+    // cout<<"pers_index post "<< pers_map.size()<<endl;
 
     pcl::toROSMsg(debug_cloud,debug_map);  
     debug_map.header.frame_id = "laser_frame";
@@ -357,18 +357,18 @@ void VFHController::vfhController() {
     if(data_length==0 && ctrl_word==0)
         return;
 
-    float min_lateral_dist = 0.2; // [m]
+    float min_lateral_dist = 0.3; // [m]
     // float min_obj_dist = 1; // [m]
     if (lateral_dist < min_lateral_dist) {
         target_dir_weight = 0.01;
-        prev_dir_weight = 0.02;
+        prev_dir_weight = 0.015;
     } else {
         prev_dir_weight = 0.01;
-        target_dir_weight = 0.02;
+        target_dir_weight = 0.015;
     }
         
     // Add circles to x,y points
-    int circle_points = 120;
+    int circle_points = 90;
     double measures_x[data_length*(1+circle_points)];
     double measures_y[data_length*(1+circle_points)];
     double x_value = 1000;
@@ -408,7 +408,7 @@ void VFHController::vfhController() {
     }
 
     // get min distance
-    int ang_lim = round(25/sector_width); // deg
+    int ang_lim = round(20/sector_width); // deg
     double min_dist = *min_element(dist_to_associate.begin(), dist_to_associate.begin()+ang_lim);
     double min_dist_2 = *min_element(dist_to_associate.end()-ang_lim, dist_to_associate.end());
     if (min_dist_2 < min_dist)
@@ -432,7 +432,7 @@ void VFHController::vfhController() {
     // evaluate speed cmd
     float dist_upper_lim = max_detection_dist;
     float dist_lower_lim = 0.7;
-    float speed_lower_lim = 0;
+    float speed_lower_lim = -0.5;
     float m = (speed_upper_lim - speed_lower_lim)/(dist_upper_lim - dist_lower_lim);
     
     if (stop) {
@@ -447,6 +447,8 @@ void VFHController::vfhController() {
     }
     if (speed_cmd > speed_upper_lim)
         speed_cmd = speed_upper_lim;
+    if (speed_cmd < 0)
+        speed_cmd = 0;
     
     if( abs(speed_cmd-speed_cmd_prev)*node_frequency > linear_speed_lim){
         double sign = (speed_cmd-speed_cmd_prev)/abs(speed_cmd-speed_cmd_prev);
@@ -479,30 +481,18 @@ void VFHController::vfhController() {
     buildCost(cost_prev,sector_index,gaussian_shift,sector_array,gaussian_weight_prev_dir/2,1,-gaussian_weight_target/2);
 
     // build obstacle cost and overall cost
-    int idx_plus,idx_minus, idx_plusplus, idx_minmin, idx_plusplus2, idx_minmin2;
-    for (int i=0; i<num_of_sector; i++) {
-        idx_plus = i+1;
-        idx_minus = i-1;
-        idx_plusplus = i+2;
-        idx_minmin = i-2;
-        idx_plusplus2 = i+3;
-        idx_minmin2 = i-3;
-        if (idx_plus>num_of_sector-1) idx_plus=0;
-        if (idx_minus<0) idx_minus=num_of_sector-1;
-
-        if (idx_plusplus>num_of_sector-1) idx_plusplus=0;
-        if (idx_plusplus>num_of_sector) idx_plusplus=1;
-        if (idx_minmin<0) idx_minmin=num_of_sector-1;
-        if (idx_minmin<-1) idx_minmin=num_of_sector-2;
-
-        if (idx_plusplus2>num_of_sector-1) idx_plusplus2=0;
-        if (idx_plusplus2>num_of_sector) idx_plusplus2=1;
-        if (idx_plusplus2>num_of_sector+1) idx_plusplus2=2;
-        if (idx_minmin2<0) idx_minmin2=num_of_sector-1;
-        if (idx_minmin2<-1) idx_minmin2=num_of_sector-2;
-        if (idx_minmin2<-2) idx_minmin2=num_of_sector-3;
-        cost_obstacle[i] = (1/dist_to_associate[i] + 1/dist_to_associate[idx_plus] + 1/dist_to_associate[idx_minus] + 1/dist_to_associate[idx_plusplus] + 1/dist_to_associate[idx_minmin] + 1/dist_to_associate[idx_plusplus2] + 1/dist_to_associate[idx_minmin2]) / 3;
-        overall_cost[i] = obstacle_weight * cost_obstacle[i] + target_dir_weight * cost_target[i] + prev_dir_weight * cost_prev[i];   
+    int ind = 0;
+    int window_idx = 0;
+    int window_size = 13; // dispari
+    for (int k=0; k<num_of_sector; k++) {
+        int ind = k;    
+        for (int i = ind-(window_size/2); i < ind + (window_size/2)+1; i++) {
+            if (i<0) window_idx = dist_to_associate.size()+i;
+            else window_idx = (i % dist_to_associate.size());
+            cost_obstacle[k] += (1/dist_to_associate[window_idx]);
+        }
+        cost_obstacle[k] = cost_obstacle[k] / window_size;    
+        overall_cost[k] = obstacle_weight * cost_obstacle[k] + target_dir_weight * cost_target[k] + prev_dir_weight * cost_prev[k];   
     }
 
     std_msgs::Float64MultiArray overall_cost_debug;
@@ -603,16 +593,12 @@ int main(int argc, char** argv)
     while (ros::ok())
     {
         ros::spinOnce();
-        // auto start(std::chrono::high_resolution_clock::now());
         auto start = std::chrono::steady_clock::now();
         VFHController.update_pers_map();
         VFHController.vfhController();
-        // auto end(std::chrono::high_resolution_clock::now());
-        // auto duration = std::chrono::duration_cast<double>(end - start);
-        // std::cout << "Duration: " << duration<< " ms\n";
         auto end = std::chrono::steady_clock::now();
         std::chrono::duration<double> diff = end - start;
-        // std::cout << "Duration [seconds]: " << diff.count() << std::endl;
+        std::cout << "Duration [seconds]: " << diff.count() << std::endl;
         loop_rate.sleep();
     }
 
