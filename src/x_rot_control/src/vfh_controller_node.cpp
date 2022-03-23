@@ -37,7 +37,8 @@ VFHController::VFHController(ros::NodeHandle* nodehandle):nh_(*nodehandle)
     pers_index = 0;
     node_frequency = 10;
     pers_time_th = 5;
-    pers_dist_th = 0.1;
+    pers_dist_th = 0.5;
+    pers_dist_th_same = 0.1;
     consensus_th = 1;
 
     debug_cloud.height = 1;   
@@ -77,7 +78,7 @@ void VFHController::robotPoseCallback(const nav_msgs::Odometry& msg) {
                       sin(yaw), cos(yaw), robot_pose_y,
                       0, 0, 1; 
     
-    pathPointFake();
+    // pathPointFake();
 }
 
 void VFHController::pathPointCallback(const nav_msgs::Odometry& msg) {
@@ -100,6 +101,8 @@ void VFHController::pathPointCallback(const nav_msgs::Odometry& msg) {
 
     if (ctrl_word==0)
         lateral_dist = -1;
+    
+    cout<< "path point! "<<path_point_x <<" " <<path_point_y <<endl;
 }
 
 void VFHController::pathPointFake() {
@@ -184,8 +187,6 @@ void VFHController::radarPointsCallback_2(const sensor_msgs::LaserScan& msg){
 
 void VFHController::update_pers_map(){
     // add new measurements to pers_map
-    // cout<< "num of raw points "<< meas_raw_x.size()<<endl;
-    // cout<<"pers_index pre "<< pers_map.size()<<endl;
     for(int i=0;i<meas_raw_x.size(); i++){
 
         close_points.clear();
@@ -201,19 +202,15 @@ void VFHController::update_pers_map(){
             dist = sqrt(diff_x*diff_x + diff_y*diff_y);
             if(dist< pers_dist_th ){
                 close_points.push_back(ind);
-                if(dist<min_dist){
+                if(dist<pers_dist_th_same){
                     closest_point = ind;
                 }
             }
         }
         vector<double> to_insert = {meas_raw_x[i], meas_raw_y[i], 0, 0};
-        // if(closest_point!=-1)
-        //     pers_map[closest_point] = to_insert;
-        // else{
-        //     pers_map[pers_index] = to_insert;
-        //     if((pers_index+1)<pers_map.size())
-        //         pers_index++;
-        // }
+        if(closest_point!=-1)
+            pers_map[closest_point] = to_insert;
+        
         if(close_points.size()==0){
             pers_map.push_back(to_insert);
         }
@@ -223,7 +220,6 @@ void VFHController::update_pers_map(){
         
     }
 
-    // cout<<"pers_index post insert "<< pers_map.size()<<endl;
     vector<double> null={-1, -1, -1, -1};
     pcl::PointXYZ point;
     meas_x_filtered.clear();
@@ -256,7 +252,6 @@ void VFHController::update_pers_map(){
             debug_cloud.width++; 
         }
     }
-    // cout<<"pers_index post "<< pers_map.size()<<endl;
 
     pcl::toROSMsg(debug_cloud,debug_map);  
     debug_map.header.frame_id = "laser_frame";
@@ -432,7 +427,7 @@ void VFHController::vfhController() {
     // evaluate speed cmd
     float dist_upper_lim = max_detection_dist;
     float dist_lower_lim = 0.7;
-    float speed_lower_lim = -0.5;
+    float speed_lower_lim = 0;
     float m = (speed_upper_lim - speed_lower_lim)/(dist_upper_lim - dist_lower_lim);
     
     if (stop) {
@@ -445,15 +440,17 @@ void VFHController::vfhController() {
             speed_cmd = (m * (min_dist - dist_lower_lim));
         }
     }
-    if (speed_cmd > speed_upper_lim)
-        speed_cmd = speed_upper_lim;
-    if (speed_cmd < 0)
-        speed_cmd = 0;
-    
+        
     if( abs(speed_cmd-speed_cmd_prev)*node_frequency > linear_speed_lim){
         double sign = (speed_cmd-speed_cmd_prev)/abs(speed_cmd-speed_cmd_prev);
         speed_cmd = speed_cmd_prev + sign*linear_speed_lim/node_frequency;
     }
+    
+    if (speed_cmd > speed_upper_lim)
+        speed_cmd = speed_upper_lim;
+    if (speed_cmd < 0)
+        speed_cmd = 0;
+
     speed_cmd_prev = speed_cmd;
     
     // BUILD COSTS
@@ -575,7 +572,7 @@ void VFHController::vfhController() {
     double angular_speed = direction_gain*direction*M_PI/180.0;
     geometry_msgs::Twist planner_msg;
     planner_msg.linear.x = speed_cmd;
-    // planner_msg.linear.z = ctrl_word;
+    planner_msg.linear.z = ctrl_word;
     planner_msg.angular.z = angular_speed;
     local_planner_pub_.publish(planner_msg);
 
@@ -593,12 +590,16 @@ int main(int argc, char** argv)
     while (ros::ok())
     {
         ros::spinOnce();
+        // auto start(std::chrono::high_resolution_clock::now());
         auto start = std::chrono::steady_clock::now();
         VFHController.update_pers_map();
         VFHController.vfhController();
+        // auto end(std::chrono::high_resolution_clock::now());
+        // auto duration = std::chrono::duration_cast<double>(end - start);
+        // std::cout << "Duration: " << duration<< " ms\n";
         auto end = std::chrono::steady_clock::now();
         std::chrono::duration<double> diff = end - start;
-        std::cout << "Duration [seconds]: " << diff.count() << std::endl;
+        // std::cout << "Duration [seconds]: " << diff.count() << std::endl;
         loop_rate.sleep();
     }
 

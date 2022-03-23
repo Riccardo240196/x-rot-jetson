@@ -65,7 +65,7 @@ private:
     float sector_width = 360/(float)num_of_sector;
     float gaussian_weight_coeff = 0.5;
     float robot_radius = 0.7; // [m]
-    float speed_upper_lim = 0.7; // [m/s]
+    float speed_upper_lim = 0.4; // [m/s]
     double direction_speed_lim = 5;
     double linear_speed_lim = 1;
 
@@ -88,7 +88,7 @@ private:
     vector< vector<double> > pers_map;
     vector< int > close_points;
     int pers_index;
-    double pers_time_th;
+    double pers_time_th,pers_dist_th_same;
     double pers_dist_th;
     int consensus_th;
     double direction_gain;
@@ -114,4 +114,6 @@ private:
 }; 
 
 #endif  
+
+
 
