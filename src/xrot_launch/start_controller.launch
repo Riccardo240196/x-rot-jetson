@@ -1,0 +1,4 @@
+<launch>
+	<node pkg="x_rot_control" type="vfh_controller_node" name="vfh_controller" output="screen"/>
+
+</launch>

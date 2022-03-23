@@ -1,0 +1,48 @@
+<launch>
+    <arg name="filename" default=""/>
+	<arg name="rviz" default="1"/>
+	<arg name="speed" default="1"/>
+	<arg name="startsec" default="0"/>
+    <arg name="duration" default="100000"/>
+
+    <param name="use_sim_time" value="true"/>
+
+    <!-- PLAY RECORDED DATA (change directory!)  -->
+    <node pkg="rosbag" type="play" name="play" args="--clock -r $(arg speed) -s $(arg startsec) -u $(arg duration) '$(arg filename)' ">
+    </node>
+	
+    <!-- Rviz -->
+	<group if="$(arg rviz)">
+        <node pkg="rviz" type="rviz" name="rviz" args="-d $(find xrot_launch)/rviz/sensors.rviz"/>
+	</group>
+			
+	<!-- LiDAR -->
+	<node pkg="lslidar_c32_decoder" type="lslidar_c32_decoder_node" name="leishen_lslidar_c32_decoder" output="log">
+        <param name="child_frame_id" value="lidar"/>
+        <param name="point_num" value="2000"/>
+        <param name="channel_num" value="0"/>
+        <param name="angle_disable_min" value="-1"/>
+        <param name="angle_disable_max" value="-1"/>
+        <param name="min_range" value="0.15"/>
+        <param name="max_range" value="500.0"/>
+        <param name="frequency" value="5.0"/>
+        <param name="publish_point_cloud" value="true"/>
+        <param name="publish_channels" value="false"/>
+        <remap from="lslidar_point_cloud" to="/point_raw" />
+    </node>
+
+    <!-- static TF -->
+    <include file="$(find xrot_launch)/xrot_tf.launch"/> 
+
+    <!-- remove ground cloud -->
+    <include file="$(find xrot_pre_proces)/launch/xrot_pre_proces.launch"/> 
+
+    <!-- add frame to sonars-->
+    <node pkg="maxbotixs_sonar" type="max_botixs_frames.py" name="max_botixs_frames" output="log">
+    </node>
+
+    <!-- RECORD -->
+    <!-- <include file="$(find xrot_launch)/xrot_record_sim.launch"> 
+    </include>   -->
+
+</launch>

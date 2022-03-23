@@ -1,0 +1,41 @@
+<launch>
+	<arg name="filename" default="xrot/"/>
+	
+	<node pkg="rosbag" type="record" name="rosbag_recorder" args="-o /home/solomon/bags/$(arg filename) 
+/clicked_point
+/received_messages
+/can_messages_A
+/can_messages_B
+/radar_messages
+/max_botix1_range
+/max_botix2_range
+/radar_pcd
+/diagnostics
+/initialpose
+/layer_num
+/lslidar_packet
+/lslidar_sweep
+/move_base_simple/goal
+/point_raw
+/received_messages
+/rosout
+/rosout_agg
+/scan
+/scan_channel
+/tf
+/tf_static
+/zed2/joint_states
+/zed2/zed_node/depth/camera_info
+/zed2/zed_node/depth/depth_registered
+/zed2/zed_node/imu/data
+/zed2/zed_node/imu/data_raw
+/zed2/zed_node/imu/mag
+/zed2/zed_node/left/camera_info
+/zed2/zed_node/left/image_rect_color
+/zed2/zed_node/point_cloud/cloud_registered
+/zed2/zed_node/right/camera_info
+/zed2/zed_node/right/image_rect_color
+ " 
+    output="log"/> 
+
+</launch>

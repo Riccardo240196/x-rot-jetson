@@ -25,6 +25,8 @@
 #include <pcl/point_types.h>
 
 #include <sensor_msgs/LaserScan.h>
+#include <dynamic_reconfigure/server.h>
+#include <x_rot_control/x_rot_controlConfig.h>
 
 using namespace std;
 using namespace Eigen;
@@ -57,17 +59,17 @@ private:
     std::vector<float> sector_limits_up;   
     std::vector<float> sector_limits_down; 
 
-    float obstacle_weight = 0.98;
-    float target_dir_weight = 0.01;
-    float prev_dir_weight = 0.01;
-    float max_detection_dist = 8; // [m] distance that triggers the avoidance manouver (defined in vehicle frame)
-    float stop_distance = 0.8; // [m] minimum distance to stop the vehicle (defined in vehicle frame)
-    float sector_width = 360/(float)num_of_sector;
-    float gaussian_weight_coeff = 0.5;
-    float robot_radius = 0.7; // [m]
-    float speed_upper_lim = 0.4; // [m/s]
-    double direction_speed_lim = 5;
-    double linear_speed_lim = 1;
+    float obstacle_weight ;
+    float target_dir_weight ;
+    float prev_dir_weight ;
+    float max_detection_dist; // [m] distance that triggers the avoidance manouver (defined in vehicle frame)
+    float stop_distance ; // [m] minimum distance to stop the vehicle (defined in vehicle frame)
+    float sector_width ;
+    float gaussian_weight_coeff ;
+    float inflation_radius ; // [m]
+    float speed_upper_lim ; // [m/s]
+    double direction_speed_lim;
+    double linear_accel_lim ;
 
 	bool ctrl_word;
 	double direction;
@@ -92,6 +94,12 @@ private:
     double pers_dist_th;
     int consensus_th;
     double direction_gain;
+    bool verbose;
+    double max_angle_dist;
+    double weight_inversion_lat_dist;
+
+    dynamic_reconfigure::Server<x_rot_control::x_rot_controlConfig> server;
+    dynamic_reconfigure::Server<x_rot_control::x_rot_controlConfig>::CallbackType f;
 
     sensor_msgs::PointCloud2 debug_map;
     pcl::PointCloud<pcl::PointXYZ> debug_cloud;
@@ -103,17 +111,19 @@ private:
     void pathPointCallback(const nav_msgs::Odometry& msg); 
     void radarPointsCallback(const radar_pa_msgs::radar_msg& msg); 
     void radarPointsCallback_2(const sensor_msgs::LaserScan& msg); 
-    void pathPointFake();
 	
     void normpdf(const std::vector<int>& sector_array, int sector_index, double gaussian_weight, std::vector<double>& norm_distribution);
     int findSectorIdx(double angle);
 	void buildCost(std::vector<double>& cost_vec, int sector_index, double gaussian_shift, std::vector<int>& sector_array, double gaussian_weight, int w1, double w2);
 	double findGaussianWeight(double coeff[]);
     int search_closest(const std::vector<int>& sorted_array, int value);
+
+    void reconfigureCallback(x_rot_control::x_rot_controlConfig &config, uint32_t level);
    
 }; 
 
 #endif  
+
 
 
 
