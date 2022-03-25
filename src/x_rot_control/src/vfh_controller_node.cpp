@@ -15,17 +15,7 @@ VFHController::VFHController(ros::NodeHandle* nodehandle):nh_(*nodehandle)
 	speed_cmd = 0;
     speed_cmd_prev = 0;
     direction_gain = 0.5;
-     
-    for (int i=0; i<num_of_sector; i++) {
-        sector_mean = i*sector_width;
-        sector_limits_up.push_back(sector_mean + sector_width/2);
-        sector_limits_down.push_back(sector_mean - sector_width/2);
-    }
 
-    vehicle_to_radar = Matrix<double, 3, 3>::Identity();
-
-    map_to_vehicle = Matrix<double, 3, 3>::Identity();
-    
     pers_index = 0;
     node_frequency = 10;
     pers_time_th = 5;
@@ -33,7 +23,43 @@ VFHController::VFHController(ros::NodeHandle* nodehandle):nh_(*nodehandle)
     pers_dist_th_same = 0.1;
     consensus_th = 1;
 
+    speed_upper_lim = 0.3;
+    num_of_sector = 180;
+    obstacle_weight = 0.98;
+    target_dir_weight = 0.01;
+    prev_dir_weight = 0.015;
+    max_detection_dist = 8;
+    stop_distance = 1.0;
+    inflation_radius = 0.7;
+    direction_speed_lim = 10;
+    linear_accel_lim = 1;
+    direction_gain = 0.5;
+    weight_inversion_lat_dist = 0.3;
+    weights_inverted = false;
+    max_angle_dist = 20;
+    verbose = true;
+    sector_width = 360/(float)num_of_sector;
+
+    goal_x = 0.0;
+    goal_y = 0.0;
+    dist_from_point = max_detection_dist;
+     
+    for (int i=0; i<num_of_sector; i++) {
+        sector_mean = i*sector_width;
+        sector_limits_up.push_back(sector_mean + sector_width/2);
+        sector_limits_down.push_back(sector_mean - sector_width/2);
+    }
+
+    vehicle_to_radar << 1,0,0.65,
+                        0,1,0,
+                        0,0,1;
+
+    map_to_vehicle = Matrix<double, 3, 3>::Identity();
+    
     debug_cloud.height = 1;   
+
+    f = boost::bind(&VFHController::reconfigureCallback, this,_1,_2);
+    server.setCallback(f);
         
 }
 
@@ -58,14 +84,23 @@ void VFHController::reconfigureCallback(x_rot_control::x_rot_controlConfig &conf
     weight_inversion_lat_dist = config.weight_inversion_lat_dist;
     max_angle_dist = config.max_angle_dist;
     verbose = config.verbose;
-
+    
     sector_width = 360/(float)num_of_sector;
+    sector_limits_up.clear();
+    sector_limits_down.clear();
+
+    for (int i=0; i<num_of_sector; i++) {
+        sector_mean = i*sector_width;
+        sector_limits_up.push_back(sector_mean + sector_width/2);
+        sector_limits_down.push_back(sector_mean - sector_width/2);
+    }
 
 }
 
 void VFHController::initializeSubscribers()
 {
-    robot_pose_sub_ = nh_.subscribe("/yape/odom_diffdrive", 1, &VFHController::robotPoseCallback,this);  
+    robot_pose_sub_ = nh_.subscribe("/yape/odom_diffdrive", 1, &VFHController::robotPoseCallback,this);
+    robot_pose_sub_2 = nh_.subscribe("/can_odometry", 1, &VFHController::robotPoseCallback_2,this);  
     path_point_sub_ = nh_.subscribe("/path_point", 1, &VFHController::pathPointCallback,this);  
     radar_points_sub_ = nh_.subscribe("/radar_messages", 1, &VFHController::radarPointsCallback,this);
     radar_points_sub_2 = nh_.subscribe("/radar", 1, &VFHController::radarPointsCallback_2,this);  
@@ -77,6 +112,8 @@ void VFHController::initializePublishers()
     cloud_pub_ = nh_.advertise<sensor_msgs::PointCloud2> ("/map_debug_output", 1);
     overall_cost_pub_ = nh_.advertise<std_msgs::Float64MultiArray> ("/cost_debug_output", 1);
     debug_pub_ = nh_.advertise<std_msgs::Float64MultiArray> ("/var_debug_output", 1);
+    goal_pose_pub_ = nh_.advertise<geometry_msgs::PoseStamped> ("/goal_pose",1);
+    ref_dir_pose_pub_ = nh_.advertise<geometry_msgs::PoseStamped> ("/ref_dir_pose",1);
 }
 
 void VFHController::robotPoseCallback(const nav_msgs::Odometry& msg) {
@@ -94,7 +131,66 @@ void VFHController::robotPoseCallback(const nav_msgs::Odometry& msg) {
 
     map_to_vehicle << cos(yaw), -sin(yaw), robot_pose_x,
                       sin(yaw), cos(yaw), robot_pose_y,
-                      0, 0, 1; 
+                      0, 0, 1;
+
+    if(path_point_received){
+        double delta_x = goal_x - robot_pose_x;
+        double delta_y = goal_y - robot_pose_y;
+        ref_direction = 180/M_PI*(atan2(delta_y,delta_x) - robot_pose_theta);
+
+        double dist_from_point = sqrt(pow(delta_x,2) + pow(delta_y,2));
+        double ang = atan2(delta_y,delta_x);
+        lateral_dist = abs(dist_from_point*cos(ang));
+
+        if (ref_direction<0)
+            ref_direction = 360 + ref_direction;     
+
+        if (ctrl_word==0 || dist_from_point<0.3)
+            lateral_dist = -1; 
+    }
+    else{
+        ref_direction = 0;
+        lateral_dist = -1;
+    }
+    
+}
+
+void VFHController::robotPoseCallback_2(const nav_msgs::Odometry& msg) {
+    robot_pose_x = msg.pose.pose.position.x;
+    robot_pose_y = msg.pose.pose.position.y;
+    tf::Quaternion q(
+        msg.pose.pose.orientation.x,
+        msg.pose.pose.orientation.y,
+        msg.pose.pose.orientation.z,
+        msg.pose.pose.orientation.w);
+    tf::Matrix3x3 m(q);
+    double roll, pitch, yaw;
+    m.getRPY(roll, pitch, yaw);
+    robot_pose_theta = yaw;
+
+    map_to_vehicle << cos(yaw), -sin(yaw), robot_pose_x,
+                      sin(yaw), cos(yaw), robot_pose_y,
+                      0, 0, 1;
+
+    if(path_point_received){
+        double delta_x = goal_x - robot_pose_x;
+        double delta_y = goal_y - robot_pose_y;
+        ref_direction = 180/M_PI*(atan2(delta_y,delta_x) - robot_pose_theta);
+
+        dist_from_point = sqrt(pow(delta_x,2) + pow(delta_y,2));
+        double ang = atan2(delta_y,delta_x);
+        lateral_dist = abs(dist_from_point*cos(ang));
+
+        if (ref_direction<0)
+            ref_direction = 360 + ref_direction;     
+
+        if (ctrl_word==0 || dist_from_point<0.3)
+            lateral_dist = -1; 
+    }
+    else{
+        ref_direction = 0;
+        lateral_dist = -1;
+    } 
     
 }
 
@@ -102,21 +198,11 @@ void VFHController::pathPointCallback(const nav_msgs::Odometry& msg) {
 
     double path_point_x = msg.pose.pose.position.x;
     double path_point_y = msg.pose.pose.position.y;
-
-    double delta_x = path_point_x - robot_pose_x;
-    double delta_y = path_point_y - robot_pose_y;
-    ref_direction = 180/M_PI*(atan2(delta_y,delta_x) - robot_pose_theta);
-
-    double dist_from_point = sqrt(pow(delta_x,2) + pow(delta_y,2));
-    double ang = atan2(delta_y,delta_x);
-    lateral_dist = abs(dist_from_point*cos(ang));
-
-    if (ref_direction<0)
-        ref_direction = 360 + ref_direction;     
-
-    if (ctrl_word==0 || dist_from_point<0.3)
-        lateral_dist = -1;
     
+    goal_x = path_point_x;
+    goal_y = path_point_y;
+
+    path_point_received = true;
     // cout<< "path point! "<<path_point_x <<" " <<path_point_y <<endl;
 }
 
@@ -240,7 +326,7 @@ void VFHController::update_pers_map(){
     }
 
     pcl::toROSMsg(debug_cloud,debug_map);  
-    debug_map.header.frame_id = "laser_frame";
+    debug_map.header.frame_id = "chassis";
     debug_map.header.stamp = ros::Time::now();  
     cloud_pub_.publish (debug_map);
 }
@@ -333,13 +419,21 @@ void VFHController::vfhController() {
     direction = 0;
     speed_cmd = 0;
 
-    if(data_length==0 && ctrl_word==0)
-        return;
-
-    if (lateral_dist > weight_inversion_lat_dist) {
+    if(data_length==0 && ctrl_word==0){
+        path_point_received = false;
+        speed_cmd = 0;
         double temp = target_dir_weight;
         target_dir_weight = prev_dir_weight;
         prev_dir_weight = temp;
+        weights_inverted = false;
+        return;
+    }
+
+    if (lateral_dist > weight_inversion_lat_dist && !weights_inverted) {
+        double temp = target_dir_weight;
+        target_dir_weight = prev_dir_weight;
+        prev_dir_weight = temp;
+        weights_inverted = true;
     } 
         
     // Add circles to x,y points
@@ -348,8 +442,23 @@ void VFHController::vfhController() {
     double measures_y[data_length*(1+circle_points)];
     double x_value = 1000;
     double y_value = 1000;
+    double min_dist = 100;    
+    double min_stop_dist = 100;
+
     for (int i=0; i<data_length; i++) {
-         if (meas_x_filtered[i]==0 && meas_y_filtered[i]==0) {
+
+        double eucl_dist = sqrt(pow(meas_x_filtered[i],2) + pow(meas_y_filtered[i],2));
+        double ang = 180/M_PI*atan2(meas_y_filtered[i],meas_x_filtered[i]);
+        if (ang < 0) 
+            ang = ang + 360;
+        
+        if(abs(ang)<max_angle_dist && eucl_dist<min_dist)
+            min_dist = eucl_dist;
+        
+        if(eucl_dist<min_stop_dist)
+            min_stop_dist = eucl_dist;
+
+        if (meas_x_filtered[i]==0 && meas_y_filtered[i]==0) {
             x_value = 1000;
             y_value = 1000;
         } else {
@@ -381,16 +490,9 @@ void VFHController::vfhController() {
             dist_to_associate[sector_index] = eucl_dist;
         
     }
-
-    // get min distance
-    int ang_lim = round(20/sector_width); // deg
-    double min_dist = *min_element(dist_to_associate.begin(), dist_to_associate.begin()+ang_lim);
-    double min_dist_2 = *min_element(dist_to_associate.end()-ang_lim, dist_to_associate.end());
-    if (min_dist_2 < min_dist)
-        min_dist = min_dist_2;
        
     bool stop = 0;
-    if (min_dist < stop_distance) {
+    if (min_stop_dist < stop_distance) {
         stop = 1;
         ctrl_word = 1;
     } else if (min_dist < max_detection_dist || lateral_dist > 0.1 ) {
@@ -399,6 +501,7 @@ void VFHController::vfhController() {
     } else {
         stop = 0;
         ctrl_word = 0;
+        path_point_received = false;
     }
     
     if (min_dist >= max_detection_dist) 
@@ -410,16 +513,13 @@ void VFHController::vfhController() {
     float speed_lower_lim = 0;
     float m = (speed_upper_lim - speed_lower_lim)/(dist_upper_lim - dist_lower_lim);
     
-    if (stop) {
-        speed_cmd = 0;
-    } 
-    else {
-        if (min_dist <= 1) {
-            speed_cmd = (m * (1 - dist_lower_lim));
-        } else {
-            speed_cmd = (m * (min_dist - dist_lower_lim));
-        }
+    
+    if (min_dist <= 1) {
+        speed_cmd = (m * (1 - dist_lower_lim));
+    } else {
+        speed_cmd = (m * (min_dist - dist_lower_lim));
     }
+   
         
     if( abs(speed_cmd-speed_cmd_prev)*node_frequency > linear_accel_lim){
         double sign = (speed_cmd-speed_cmd_prev)/abs(speed_cmd-speed_cmd_prev);
@@ -429,6 +529,9 @@ void VFHController::vfhController() {
     if (speed_cmd > speed_upper_lim)
         speed_cmd = speed_upper_lim;
     if (speed_cmd < 0)
+        speed_cmd = 0;
+
+    if(!ctrl_word || stop)
         speed_cmd = 0;
 
     speed_cmd_prev = speed_cmd;
@@ -447,7 +550,6 @@ void VFHController::vfhController() {
     double gaussian_weight_target = findGaussianWeight(coeff);
     double gaussian_weight_prev_dir = findGaussianWeight(coeff);
     double coeff2[4] = {0.369389785763626,3.64914690021850,-0.216102762982391,-3.84497580829445};
-    double gaussian_weight_obs = findGaussianWeight(coeff2)*gaussian_weight_coeff;
     
     // build target direction cost
     sector_index = findSectorIdx(ref_direction);
@@ -543,21 +645,54 @@ void VFHController::vfhController() {
     var_debug.data.push_back(ref_direction);
     var_debug.data.push_back(direction);
     var_debug.data.push_back(speed_cmd);
-    var_debug.data.push_back(boundaries[0]);
-    var_debug.data.push_back(boundaries[1]);
+    // var_debug.data.push_back(boundaries[0]);
+    // var_debug.data.push_back(boundaries[1]);
     var_debug.data.push_back(goal_x);
     var_debug.data.push_back(goal_y);
+    var_debug.data.push_back(dist_from_point);
+    var_debug.data.push_back(path_point_received);
     debug_pub_.publish(var_debug);
     
     prev_direction = direction;
 
     // va aggiunto il controllo sulla somma delle velocità.
     double angular_speed = direction_gain*direction*M_PI/180.0;
+    double goal_dist_speed = (speed_upper_lim/5)*dist_from_point;
+    if (abs(angular_speed) > speed_upper_lim/2) 
+        angular_speed = angular_speed/abs(angular_speed)*speed_upper_lim/2; 
+    
     geometry_msgs::Twist planner_msg;
-    planner_msg.linear.x = speed_cmd;
+    planner_msg.linear.x = min(min(speed_cmd,speed_upper_lim-abs(angular_speed)),goal_dist_speed);
     planner_msg.linear.z = ctrl_word;
     planner_msg.angular.z = angular_speed;
     local_planner_pub_.publish(planner_msg);
+
+    // fill ref dir and goal pose 
+    ref_dir_pose.header.frame_id = "chassis";
+    ref_dir_pose.header.stamp = ros::Time::now();
+    ref_dir_pose.pose.position.x = 0;
+    ref_dir_pose.pose.position.y = 0;
+    tf::Quaternion q;
+    q.setRPY(0, 0, (direction)*M_PI/180.0);
+    ref_dir_pose.pose.orientation.x = q.x();
+    ref_dir_pose.pose.orientation.y = q.y();
+    ref_dir_pose.pose.orientation.z = q.z();
+    ref_dir_pose.pose.orientation.w = q.w();
+
+
+    goal_pose.header.frame_id = "chassis";
+    goal_pose.header.stamp = ros::Time::now();
+    goal_pose.pose.position.y = (goal_x - robot_pose_x);
+    goal_pose.pose.position.x = -(goal_y - robot_pose_y);
+    q.setRPY(0, 0, (ref_direction+180)*M_PI/180.0);
+    goal_pose.pose.orientation.x = q.x();
+    goal_pose.pose.orientation.y = q.y();
+    goal_pose.pose.orientation.z = q.z();
+    goal_pose.pose.orientation.w = q.w();
+
+
+    ref_dir_pose_pub_.publish(ref_dir_pose);
+    goal_pose_pub_.publish(goal_pose);
 
 }
 

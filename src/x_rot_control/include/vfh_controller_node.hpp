@@ -27,6 +27,7 @@
 #include <sensor_msgs/LaserScan.h>
 #include <dynamic_reconfigure/server.h>
 #include <x_rot_control/x_rot_controlConfig.h>
+#include <geometry_msgs/PoseStamped.h>
 
 using namespace std;
 using namespace Eigen;
@@ -41,13 +42,14 @@ public:
     void vfhController();
 private:
     ros::NodeHandle nh_; 
-    ros::Subscriber robot_pose_sub_; 
+    ros::Subscriber robot_pose_sub_,robot_pose_sub_2; 
     ros::Subscriber path_point_sub_; 
     ros::Subscriber radar_points_sub_,radar_points_sub_2; 
     ros::Publisher  local_planner_pub_;
     ros::Publisher  cloud_pub_;
     ros::Publisher  overall_cost_pub_;
     ros::Publisher  debug_pub_;
+    ros::Publisher  goal_pose_pub_, ref_dir_pose_pub_; 
     
     double robot_pose_x; 
     double robot_pose_y; 
@@ -65,7 +67,6 @@ private:
     float max_detection_dist; // [m] distance that triggers the avoidance manouver (defined in vehicle frame)
     float stop_distance ; // [m] minimum distance to stop the vehicle (defined in vehicle frame)
     float sector_width ;
-    float gaussian_weight_coeff ;
     float inflation_radius ; // [m]
     float speed_upper_lim ; // [m/s]
     double direction_speed_lim;
@@ -79,6 +80,7 @@ private:
 
     double goal_x;
     double goal_y;
+    double dist_from_point;
 
     vector<double> meas_raw_x;
     vector<double> meas_raw_y;
@@ -97,6 +99,10 @@ private:
     bool verbose;
     double max_angle_dist;
     double weight_inversion_lat_dist;
+    bool weights_inverted;
+    bool path_point_received = false;
+
+    geometry_msgs::PoseStamped ref_dir_pose, goal_pose;
 
     dynamic_reconfigure::Server<x_rot_control::x_rot_controlConfig> server;
     dynamic_reconfigure::Server<x_rot_control::x_rot_controlConfig>::CallbackType f;
@@ -108,6 +114,7 @@ private:
     void initializePublishers();
 
     void robotPoseCallback(const nav_msgs::Odometry& msg); 
+    void robotPoseCallback_2(const nav_msgs::Odometry& msg); 
     void pathPointCallback(const nav_msgs::Odometry& msg); 
     void radarPointsCallback(const radar_pa_msgs::radar_msg& msg); 
     void radarPointsCallback_2(const sensor_msgs::LaserScan& msg); 

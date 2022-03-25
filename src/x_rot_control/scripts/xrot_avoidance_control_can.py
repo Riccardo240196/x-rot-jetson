@@ -65,10 +65,10 @@ class xrot_position_control:
 
     def cmd_vel_cbk(self,msg):
         self.Allarm_ON = msg.linear.z
-        self.Request_Control = self.received_path
+        self.Request_Control = msg.linear.z
         self.Closes_Obst_Dist = 0
         self.Closes_Obst_Orient = 0
-        self.Speed_Request = int(128 + msg.linear.x*127)
+        self.Speed_Request = int(128 + msg.linear.x*127)*self.Allarm_ON
         self.Steering_Request = int((-msg.angular.z + 0.75)*255/1.5) # 0 full left (positive omega), 255 full rigth (negative omega)
         # print(self.Speed_Request, self.Steering_Request)
         self.send_local_planner()
