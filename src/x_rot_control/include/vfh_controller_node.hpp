@@ -40,6 +40,7 @@ public:
     double node_frequency;
     void update_pers_map();
     void vfhController();
+    void local_planner_pub();
 private:
     ros::NodeHandle nh_; 
     ros::Subscriber robot_pose_sub_,robot_pose_sub_2; 
@@ -50,81 +51,95 @@ private:
     ros::Publisher  overall_cost_pub_;
     ros::Publisher  debug_pub_;
     ros::Publisher  goal_pose_pub_, ref_dir_pose_pub_; 
-    
-    double robot_pose_x; 
-    double robot_pose_y; 
-    double robot_pose_theta; 
-	double ref_direction;
-	double lateral_dist;
-	int num_of_sector = 180;
-    float sector_mean = 0;
-    std::vector<float> sector_limits_up;   
-    std::vector<float> sector_limits_down; 
-
-    float obstacle_weight ;
-    float target_dir_weight ;
-    float prev_dir_weight ;
-    float max_detection_dist; // [m] distance that triggers the avoidance manouver (defined in vehicle frame)
-    float stop_distance ; // [m] minimum distance to stop the vehicle (defined in vehicle frame)
-    float sector_width ;
-    float inflation_radius ; // [m]
-    float speed_upper_lim ; // [m/s]
-    double direction_speed_lim;
-    double linear_accel_lim ;
-
-	bool ctrl_word;
-	double direction;
-    double prev_direction;
-	double speed_cmd;
-    double speed_cmd_prev;
-
-    double goal_x;
-    double goal_y;
-    double dist_from_point;
-
-    vector<double> meas_raw_x;
-    vector<double> meas_raw_y;
-    vector<double> meas_x_filtered;
-    vector<double> meas_y_filtered;
-    Matrix<double, 3, 3> vehicle_to_radar;
-    Matrix<double, 3, 3> map_to_vehicle;
-
-    vector< vector<double> > pers_map;
-    vector< int > close_points;
-    int pers_index;
-    double pers_time_th,pers_dist_th_same;
-    double pers_dist_th;
-    int consensus_th;
-    double direction_gain;
-    bool verbose;
-    double max_angle_dist;
-    double weight_inversion_lat_dist;
-    bool weights_inverted;
-    bool path_point_received = false;
-
-    geometry_msgs::PoseStamped ref_dir_pose, goal_pose;
-
     dynamic_reconfigure::Server<x_rot_control::x_rot_controlConfig> server;
     dynamic_reconfigure::Server<x_rot_control::x_rot_controlConfig>::CallbackType f;
-
+    
+    double robot_pose_x;                    // robot x in MAP frame (GPS) [m]
+    double robot_pose_y;                    // robot y in MAP frame (GPS) [m]
+    double robot_pose_theta;                // robot yaw in MAP frame (GPS) [rad]
+    // persistency map parameters
+    vector<double> meas_raw_x;              // vector of raw x measures extracted from radar sensor [m]
+    vector<double> meas_raw_y;              // vector of raw y measures extracted from radar sensor [m]
+    vector<double> meas_x_filtered;         // vector of filtered x measures [m]
+    vector<double> meas_y_filtered;         // vector of filtered y measures [m]
+    vector< vector<double> > pers_map;      // persistency matrix: 
+                                                // 1st column: x measures [m]
+                                                // 2nd column: y measures [m]    
+                                                // 3rd column: last time in which each measure was updated (used to erase old measures)
+                                                // 4th column: number of times each point was detected (used to confirm measures)
+    vector< int > close_points;             // vector that contains points closer to each measure
+    int pers_index;        // NON PIù USATO??
+    double pers_time_th;                    // time threshold used to delete old measures 
+    double pers_dist_th_same;               // distance threshold used to find closest point
+    double pers_dist_th;                    // distance threshold used to determine close points  
+    int consensus_th;                       // consensus threshold used to confirm measures 
+    // local planner parameters - main
+	double ref_direction;                   // target direction (GOAL) [deg]. When local planner has not control of the robot its value is -1.
+	double lateral_dist;                    // lateral distance with respect to GOAL [m]. When local planner has not control of the robot its value is -1.
+    double dist_from_point;                 // euclidean distance from GOAL [m]. When local planner has not control of the robot its value is -1.
+    bool path_point_received;               // TRUE when GOAL is received from CAN. FALSE when the GOAL is reached.
+    bool ctrl_word;                         // TRUE when the measured distance is below 'max_detection_dist' or 'lateral_dist' is > 0. FALSE when the GOAL is reached.
+    bool stop;                              // TRUE when the measured distance is below 'stop_distance'. FALSE when the GOAL is reached.
+    float max_detection_dist;               // distance that triggers the avoidance manouver (defined in vehicle frame) [m]
+    float max_angle_dist;                   // max angle at which 'min_dist' should be to actually triggers the avoidance manouver [deg]
+                                                // toghether with 'max_detection_dist' determine the frontal cone area in which an object should be to trigger the avoidance.
+    float stop_distance;                    // minimum distance to stop the vehicle (defined in vehicle frame) [m]
+    double min_dist;                        // minimum measured distance (defined in vehicle frame) [m]
+	// local planner parameters - direction
+    double direction;                       // direction chosen [deg]. When local planner has not control of the robot its value is 0.
+    double prev_direction;                  // previous direction [deg]
+    double direction_gain;                  // gain of the proportional controller used to steer the robot.
+    double direction_speed_lim;             // limit of the possible robot turning speed [deg/s]
+	// local planner parameters - linear speed
+    float speed_upper_lim;                  // linear speed upper limit [m/s]
+    float speed_lower_lim;                  // linear speed lower limit [m/s]
+	double speed_cmd;                       // linear speed command [m/s]
+    double speed_cmd_prev;                  // previous linear speed command [m/s]
+    double linear_accel_lim;                // limit of the possible robot linear acceleration [m/s^2]
+    float speed_gain;                       // gain of the linear speed.
+    // local planner parameters - costs
+	int num_of_sector = 180;                // number of sectors
+    float sector_width;                     // width of each sector [deg]. sector_width=360/num_of_sector.
+    float obstacle_weight;                  // weight of the obstacle cost
+    float target_dir_weight;                // weight of the target direction cost
+    float prev_dir_weight;                  // weight of the previous direction cost
+    float inflation_radius;                 // radius of the circle that is added to each measured point [m]
+    std::vector<float> sector_limits_up;    // vector of sectors upper limits [deg]
+    std::vector<float> sector_limits_down;  // vector of sectors lower limits [deg] 
+    // local planner parameters - directions weights inversion
+    double weight_inversion_lat_dist;       // lateral distance thresholds that triggers the 'target_dir_weight' and 'prev_dir_weight' inversion [m]
+    bool weights_inverted;                  // TRUE if 'lateral_dist>weight_inversion_lat_dist'. FALSE when the GOAL is reached. 
+    // local planner parameters - goal point
+    double goal_x;                          // GOAL x position in MAP frame [m]
+    double goal_y;                          // GOAL y position in MAP frame [m]
+    float dist_to_goal_th;                  // distance threshold that toghether with 'lateral_dist_th' determine the END of the avoidance manouver. [m]
+    float lateral_dist_th;                  // distance threshold that toghether with 'dist_to_goal_th' determine the END of the avoidance manouver. [m]
+    // Transformation matrices 
+    Matrix<double, 3, 3> vehicle_to_radar;  // vehicle to radar transformation matrix
+    Matrix<double, 3, 3> map_to_vehicle;    // map to vehicle transformation matrix
+    // verbose - DEBUG
+    bool verbose;
+    // ROS messages - DEBUG
+    geometry_msgs::PoseStamped ref_dir_pose, goal_pose;
     sensor_msgs::PointCloud2 debug_map;
     pcl::PointCloud<pcl::PointXYZ> debug_cloud;
-        
+
+    // Methods to initialize publishers and subscribers
     void initializeSubscribers(); 
     void initializePublishers();
-
+    // Methods to get robot pose, radar points and goal point 
     void robotPoseCallback(const nav_msgs::Odometry& msg); 
     void robotPoseCallback_2(const nav_msgs::Odometry& msg); 
     void pathPointCallback(const nav_msgs::Odometry& msg); 
     void radarPointsCallback(const radar_pa_msgs::radar_msg& msg); 
     void radarPointsCallback_2(const sensor_msgs::LaserScan& msg); 
-	
+	// Methods for vector field histogram controller
     void normpdf(const std::vector<int>& sector_array, int sector_index, double gaussian_weight, std::vector<double>& norm_distribution);
     int findSectorIdx(double angle);
 	void buildCost(std::vector<double>& cost_vec, int sector_index, double gaussian_shift, std::vector<int>& sector_array, double gaussian_weight, int w1, double w2);
 	double findGaussianWeight(double coeff[]);
     int search_closest(const std::vector<int>& sorted_array, int value);
-
+    // Methods for dynamic reconfiguration of parameters
     void reconfigureCallback(x_rot_control::x_rot_controlConfig &config, uint32_t level);
    
 }; 

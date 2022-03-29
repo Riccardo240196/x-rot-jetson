@@ -6,56 +6,71 @@ VFHController::VFHController(ros::NodeHandle* nodehandle):nh_(*nodehandle)
     ROS_INFO("in class constructor of VFHController");
     initializeSubscribers(); 
     initializePublishers();
-    
-    ref_direction = -1;
-    lateral_dist = -1;
-    ctrl_word = 0;
-	direction = 0;
-    prev_direction = 0;
-	speed_cmd = 0;
-    speed_cmd_prev = 0;
-    direction_gain = 0.5;
 
-    pers_index = 0;
+    // FOR DETAILS OF THE DEFINITION OF EACH PARAMETER SEE 'vfh_controller_node.hpp'
     node_frequency = 10;
+    // persistency map parameters
+    pers_index = 0;
     pers_time_th = 5;
     pers_dist_th = 0.5;
     pers_dist_th_same = 0.1;
     consensus_th = 1;
-
-    speed_upper_lim = 0.3;
-    num_of_sector = 180;
-    obstacle_weight = 0.98;
-    target_dir_weight = 0.01;
-    prev_dir_weight = 0.015;
-    max_detection_dist = 8;
-    stop_distance = 1.0;
-    inflation_radius = 0.7;
-    direction_speed_lim = 10;
-    linear_accel_lim = 1;
+    // local planner parameters - main
+    ref_direction = -1;
+    lateral_dist = -1;
+    dist_from_point = -1;
+    path_point_received = false;
+    ctrl_word = 0; 
+    stop = 0;
+    max_detection_dist = 6;
+    max_angle_dist = 20;
+    stop_distance = 1.2;
+    min_dist = 100;
+    // local planner parameters - direction
+	direction = 0;
+    prev_direction = 0;
     direction_gain = 0.5;
+    direction_speed_lim = 10;
+    // local planner parameters - linear speed
+    speed_upper_lim = 0.5;
+	speed_cmd = 0;
+    speed_cmd_prev = 0;
+    linear_accel_lim = 1;
+    speed_lower_lim = 0;
+    speed_gain = (speed_upper_lim - speed_lower_lim)/(max_detection_dist - stop_distance);
+    // local planner parameters - costs
+    num_of_sector = 180;
+    sector_width = 360/(float)num_of_sector;
+    obstacle_weight = 0.95;
+    target_dir_weight = 0.1;
+    prev_dir_weight = 0.2;
+    inflation_radius = 0.7;
+    // local planner parameters - directions weights inversion
     weight_inversion_lat_dist = 0.3;
     weights_inverted = false;
-    max_angle_dist = 20;
-    verbose = true;
-    sector_width = 360/(float)num_of_sector;
-
+    // local planner parameters - goal point
     goal_x = 0.0;
     goal_y = 0.0;
-    dist_from_point = max_detection_dist;
+    dist_to_goal_th = 0.3; // [m]
+    lateral_dist_th = 0.2; // [m]
+    // verbse
+    verbose = true;
      
+    // local planner - initialize sectors limits
     for (int i=0; i<num_of_sector; i++) {
-        sector_mean = i*sector_width;
+        float sector_mean = i*sector_width;
         sector_limits_up.push_back(sector_mean + sector_width/2);
         sector_limits_down.push_back(sector_mean - sector_width/2);
     }
 
+    // Transformation matrix 'vehicle_to_radar' - initialization
     vehicle_to_radar << 1,0,0.65,
                         0,1,0,
                         0,0,1;
-
+    // Transformation matrix 'map_to_vehicle' - initialization
     map_to_vehicle = Matrix<double, 3, 3>::Identity();
     
+
     debug_cloud.height = 1;   
 
     f = boost::bind(&VFHController::reconfigureCallback, this,_1,_2);
@@ -65,35 +80,44 @@ VFHController::VFHController(ros::NodeHandle* nodehandle):nh_(*nodehandle)
 
 void VFHController::reconfigureCallback(x_rot_control::x_rot_controlConfig &config, uint32_t level) {
     
+    // persistency map parameters
     pers_time_th = config.pers_time_th;
     pers_dist_th = config.pers_dist_th;
     pers_dist_th_same = config.pers_dist_th_same;
     consensus_th = config.consensus_th;
-
-    speed_upper_lim = config.speed_upper_lim;
+    // local planner costs parameters
     num_of_sector = config.num_of_sector;
     obstacle_weight = config.obstacle_weight;
     target_dir_weight = config.target_dir_weight;
     prev_dir_weight = config.prev_dir_weight;
-    max_detection_dist = config.max_detection_dist;
-    stop_distance = config.stop_distance;
-    inflation_radius = config.inflation_radius;
-    direction_speed_lim = config.direction_speed_lim;
-    linear_accel_lim = config.linear_accel_lim;
-    direction_gain = config.direction_gain;
     weight_inversion_lat_dist = config.weight_inversion_lat_dist;
+    inflation_radius = config.inflation_radius;
+    // local planner START/STOP parameters
+    max_detection_dist = config.max_detection_dist;
     max_angle_dist = config.max_angle_dist;
+    dist_to_goal_th = config.dist_to_goal_th;
+    lateral_dist_th = config.lateral_dist_th;
+    // linear speed cmd parameters
+    stop_distance = config.stop_distance;
+    speed_upper_lim = config.speed_upper_lim;
+    linear_accel_lim = config.linear_accel_lim;
+    // angular speed cmd parameters
+    direction_speed_lim = config.direction_speed_lim;
+    direction_gain = config.direction_gain;
+    // verbose
     verbose = config.verbose;
     
+    // local planner variables that need to be updated 
     sector_width = 360/(float)num_of_sector;
     sector_limits_up.clear();
     sector_limits_down.clear();
-
     for (int i=0; i<num_of_sector; i++) {
-        sector_mean = i*sector_width;
+        float sector_mean = i*sector_width;
         sector_limits_up.push_back(sector_mean + sector_width/2);
         sector_limits_down.push_back(sector_mean - sector_width/2);
     }
+    speed_lower_lim = 0;
+    speed_gain = (speed_upper_lim - speed_lower_lim)/(max_detection_dist - stop_distance);
 
 }
 
@@ -133,29 +157,47 @@ void VFHController::robotPoseCallback(const nav_msgs::Odometry& msg) {
                       sin(yaw), cos(yaw), robot_pose_y,
                       0, 0, 1;
 
-    if(path_point_received){
+    if (ctrl_word && robot_pose_x<16.8) {
+        goal_x = 17;
+        goal_y = 0;
+        path_point_received = true;
+    }
+    else if (ctrl_word && robot_pose_x>17 && robot_pose_x<33.8) {
+        goal_x = 34;
+        goal_y = 0;
+        path_point_received = true;
+    }
+    else if (ctrl_word && robot_pose_x>34 && robot_pose_x<51.8) {
+        goal_x = 52;
+        goal_y = 0;
+        path_point_received = true;
+    }
+
+    if (path_point_received) {
         double delta_x = goal_x - robot_pose_x;
         double delta_y = goal_y - robot_pose_y;
         ref_direction = 180/M_PI*(atan2(delta_y,delta_x) - robot_pose_theta);
 
-        double dist_from_point = sqrt(pow(delta_x,2) + pow(delta_y,2));
+        dist_from_point = sqrt(pow(delta_x,2) + pow(delta_y,2));
         double ang = atan2(delta_y,delta_x);
-        lateral_dist = abs(dist_from_point*cos(ang));
+        lateral_dist = abs(dist_from_point*sin(ang));
+
+        if (dist_from_point<0.5) // ADDED JUST FOR GAZEBO SIMULATION
+            ref_direction = 180/M_PI*(atan2(delta_y,delta_x+2) - robot_pose_theta); // ADDED JUST FOR GAZEBO SIMULATION
 
         if (ref_direction<0)
             ref_direction = 360 + ref_direction;     
-
-        if (ctrl_word==0 || dist_from_point<0.3)
-            lateral_dist = -1; 
     }
-    else{
+    else {
         ref_direction = 0;
         lateral_dist = -1;
+        dist_from_point = -1;
     }
     
 }
 
 void VFHController::robotPoseCallback_2(const nav_msgs::Odometry& msg) {
+    // Extract robot pose
     robot_pose_x = msg.pose.pose.position.x;
     robot_pose_y = msg.pose.pose.position.y;
     tf::Quaternion q(
@@ -168,11 +210,13 @@ void VFHController::robotPoseCallback_2(const nav_msgs::Odometry& msg) {
     m.getRPY(roll, pitch, yaw);
     robot_pose_theta = yaw;
 
+    // Build transformation matrix 'map_to_vehicle'
     map_to_vehicle << cos(yaw), -sin(yaw), robot_pose_x,
                       sin(yaw), cos(yaw), robot_pose_y,
                       0, 0, 1;
 
-    if(path_point_received){
+    // Calculate reference direction, lateral distance from path and distance from goal point
+    if (path_point_received) {
         double delta_x = goal_x - robot_pose_x;
         double delta_y = goal_y - robot_pose_y;
         ref_direction = 180/M_PI*(atan2(delta_y,delta_x) - robot_pose_theta);
@@ -182,14 +226,12 @@ void VFHController::robotPoseCallback_2(const nav_msgs::Odometry& msg) {
         lateral_dist = abs(dist_from_point*cos(ang));
 
         if (ref_direction<0)
-            ref_direction = 360 + ref_direction;     
-
-        if (ctrl_word==0 || dist_from_point<0.3)
-            lateral_dist = -1; 
+            ref_direction = 360 + ref_direction;      
     }
-    else{
+    else {
         ref_direction = 0;
         lateral_dist = -1;
+        dist_from_point = -1;
     } 
     
 }
@@ -292,13 +334,15 @@ void VFHController::update_pers_map(){
         
     }
 
-    vector<double> null={-1, -1, -1, -1};
-    pcl::PointXYZ point;
+    vector<double> null={-1, -1, -1, -1}; // NON SERVE PIù??
     meas_x_filtered.clear();
     meas_y_filtered.clear();
     
-    debug_cloud.points.clear();
-    debug_cloud.width = 0;
+    pcl::PointXYZ point;
+    if (verbose) {
+        debug_cloud.points.clear();
+        debug_cloud.width = 0;
+    }
 
     Matrix<double, 3, 1> temp;
 
@@ -316,19 +360,23 @@ void VFHController::update_pers_map(){
             meas_x_filtered.push_back(temp(0));
             meas_y_filtered.push_back(temp(1));            
 
-            point.x = temp(0);
-            point.y = temp(1);
-            point.z = 0.0;
+            if (verbose) {
+                point.x = temp(0);
+                point.y = temp(1);
+                point.z = 0.0;
 
-            debug_cloud.points.push_back(point);
-            debug_cloud.width++; 
+                debug_cloud.points.push_back(point);
+                debug_cloud.width++; 
+            }
         }
     }
 
-    pcl::toROSMsg(debug_cloud,debug_map);  
-    debug_map.header.frame_id = "chassis";
-    debug_map.header.stamp = ros::Time::now();  
-    cloud_pub_.publish (debug_map);
+    if (verbose) {
+        pcl::toROSMsg(debug_cloud,debug_map);  
+        debug_map.header.frame_id = "chassis";
+        debug_map.header.stamp = ros::Time::now();  
+        cloud_pub_.publish (debug_map);
+    }
 }
 
 void VFHController::normpdf(const std::vector<int>& sector_array, int sector_index, double gaussian_weight, std::vector<double>& norm_distribution) {
@@ -416,12 +464,22 @@ int VFHController::search_closest(const std::vector<int>& sorted_array, int valu
 
 void VFHController::vfhController() {
     int data_length = meas_x_filtered.size();
-    direction = 0;
-    speed_cmd = 0;
+    direction = 0; // ref_direction==-1 ? 0 : ref_direction
+    speed_cmd = 0.5; // 0
 
     if(data_length==0 && ctrl_word==0){
+        return;
+    }
+    
+    if (!stop && lateral_dist<lateral_dist_th && dist_from_point<dist_to_goal_th && lateral_dist>0 && dist_from_point>0){   
+        // Reset local planner params     
+        dist_from_point = -1;
+        lateral_dist = -1;
         path_point_received = false;
+        ctrl_word = 0;
         speed_cmd = 0;
+        direction = prev_direction;
+        // Invert again directions weights
         double temp = target_dir_weight;
         target_dir_weight = prev_dir_weight;
         prev_dir_weight = temp;
@@ -429,6 +487,7 @@ void VFHController::vfhController() {
         return;
     }
 
+    // Invert directions weights
     if (lateral_dist > weight_inversion_lat_dist && !weights_inverted) {
         double temp = target_dir_weight;
         target_dir_weight = prev_dir_weight;
@@ -436,21 +495,19 @@ void VFHController::vfhController() {
         weights_inverted = true;
     } 
         
-    // Add circles to x,y points
+    // Add circles to x,y points and FIND Min distance
     int circle_points = 90;
     double measures_x[data_length*(1+circle_points)];
     double measures_y[data_length*(1+circle_points)];
     double x_value = 1000;
     double y_value = 1000;
-    double min_dist = 100;    
     double min_stop_dist = 100;
+    min_dist = 100;    
 
     for (int i=0; i<data_length; i++) {
 
         double eucl_dist = sqrt(pow(meas_x_filtered[i],2) + pow(meas_y_filtered[i],2));
-        double ang = 180/M_PI*atan2(meas_y_filtered[i],meas_x_filtered[i]);
-        if (ang < 0) 
-            ang = ang + 360;
+        double ang = 180/M_PI*atan2(meas_y_filtered[i],meas_x_filtered[i]); // VERIFICA CON PUNTI RADAR VERO
         
         if(abs(ang)<max_angle_dist && eucl_dist<min_dist)
             min_dist = eucl_dist;
@@ -473,6 +530,25 @@ void VFHController::vfhController() {
         }
     }  
 
+    // set STOP and CTRL_WORD var
+    if (min_stop_dist < stop_distance) {
+        stop = 1;
+        ctrl_word = 1;
+    } else if (min_dist < max_detection_dist || lateral_dist > 0 || path_point_received) {
+        stop = 0;
+        ctrl_word = 1;
+    } else {
+        stop = 0;
+        ctrl_word = 0;
+        path_point_received = false;
+    }
+    
+    if (min_dist >= max_detection_dist) 
+        min_dist = max_detection_dist;
+
+    if (!ctrl_word) 
+        return;
+        
     // define sector limits 
     size_t data_size = sizeof(measures_x)/sizeof(measures_x[0]);
 
@@ -486,55 +562,10 @@ void VFHController::vfhController() {
             ang = ang + 360;
         
         sector_index = findSectorIdx(ang);
-        if (dist_to_associate[sector_index] > eucl_dist) 
+        if (dist_to_associate[sector_index] > eucl_dist && eucl_dist < (max_detection_dist+2) )
             dist_to_associate[sector_index] = eucl_dist;
         
     }
-       
-    bool stop = 0;
-    if (min_stop_dist < stop_distance) {
-        stop = 1;
-        ctrl_word = 1;
-    } else if (min_dist < max_detection_dist || lateral_dist > 0.1 ) {
-        stop = 0;
-        ctrl_word = 1;
-    } else {
-        stop = 0;
-        ctrl_word = 0;
-        path_point_received = false;
-    }
-    
-    if (min_dist >= max_detection_dist) 
-        min_dist = max_detection_dist;
-    
-    // evaluate speed cmd
-    float dist_upper_lim = max_detection_dist;
-    float dist_lower_lim = 0.7;
-    float speed_lower_lim = 0;
-    float m = (speed_upper_lim - speed_lower_lim)/(dist_upper_lim - dist_lower_lim);
-    
-    
-    if (min_dist <= 1) {
-        speed_cmd = (m * (1 - dist_lower_lim));
-    } else {
-        speed_cmd = (m * (min_dist - dist_lower_lim));
-    }
-   
-        
-    if( abs(speed_cmd-speed_cmd_prev)*node_frequency > linear_accel_lim){
-        double sign = (speed_cmd-speed_cmd_prev)/abs(speed_cmd-speed_cmd_prev);
-        speed_cmd = speed_cmd_prev + sign*linear_accel_lim/node_frequency;
-    }
-    
-    if (speed_cmd > speed_upper_lim)
-        speed_cmd = speed_upper_lim;
-    if (speed_cmd < 0)
-        speed_cmd = 0;
-
-    if(!ctrl_word || stop)
-        speed_cmd = 0;
-
-    speed_cmd_prev = speed_cmd;
     
     // BUILD COSTS
     std::vector<int> sector_array(num_of_sector,0);
@@ -553,11 +584,11 @@ void VFHController::vfhController() {
     
     // build target direction cost
     sector_index = findSectorIdx(ref_direction);
-    buildCost(cost_target,sector_index,gaussian_shift,sector_array,gaussian_weight_target/2,1,-gaussian_weight_target/2);
+    buildCost(cost_target,sector_index,gaussian_shift,sector_array,gaussian_weight_target,1,-gaussian_weight_target);
     
     // build previous direction cost
     sector_index = findSectorIdx(prev_direction);
-    buildCost(cost_prev,sector_index,gaussian_shift,sector_array,gaussian_weight_prev_dir/2,1,-gaussian_weight_target/2);
+    buildCost(cost_prev,sector_index,gaussian_shift,sector_array,gaussian_weight_prev_dir,1,-gaussian_weight_prev_dir);
 
     // build obstacle cost and overall cost
     int ind = 0;
@@ -577,11 +608,14 @@ void VFHController::vfhController() {
         overall_cost[k] = obstacle_weight * cost_obstacle[k] + target_dir_weight * cost_target[k] + prev_dir_weight * cost_prev[k];   
     }
 
-    std_msgs::Float64MultiArray overall_cost_debug;
-    for (int i=0; i<num_of_sector; i++) {
-        overall_cost_debug.data.push_back(overall_cost[i]);
+    // DEBUG - overall cost
+    if (verbose) {
+        std_msgs::Float64MultiArray overall_cost_debug;
+        for (int i=0; i<num_of_sector; i++) {
+            overall_cost_debug.data.push_back(overall_cost[i]);
+        }
+        overall_cost_pub_.publish(overall_cost_debug);
     }
-    overall_cost_pub_.publish(overall_cost_debug);
   
     // get min cost and direction
     std::vector<int> vec;
@@ -631,68 +665,102 @@ void VFHController::vfhController() {
         double sign = (direction-prev_direction)/abs(direction-prev_direction);
         direction = prev_direction + sign*direction_speed_lim/node_frequency;
     }
-
-    // std::cout << "direction : " << direction << std::endl;
-    // std::cout << "ctrl_word : " << ctrl_word << std::endl;
-    // std::cout << "min_dist : " << min_dist << std::endl;
-    // std::cout << "boundaries[0] : " << boundaries[0] << std::endl;
-    // std::cout << "boundaries[1] : " << boundaries[1] << std::endl;
-
-    std_msgs::Float64MultiArray var_debug;
-    var_debug.data.push_back(ctrl_word);
-    var_debug.data.push_back(min_dist);
-    var_debug.data.push_back(lateral_dist);
-    var_debug.data.push_back(ref_direction);
-    var_debug.data.push_back(direction);
-    var_debug.data.push_back(speed_cmd);
-    // var_debug.data.push_back(boundaries[0]);
-    // var_debug.data.push_back(boundaries[1]);
-    var_debug.data.push_back(goal_x);
-    var_debug.data.push_back(goal_y);
-    var_debug.data.push_back(dist_from_point);
-    var_debug.data.push_back(path_point_received);
-    debug_pub_.publish(var_debug);
-    
     prev_direction = direction;
 
-    // va aggiunto il controllo sulla somma delle velocità.
+    // DEBUG - reference direction and goal pose
+    if (verbose) {
+        // fill ref dir and goal pose 
+        ref_dir_pose.header.frame_id = "chassis";
+        ref_dir_pose.header.stamp = ros::Time::now();
+        ref_dir_pose.pose.position.x = 0;
+        ref_dir_pose.pose.position.y = 0;
+        tf::Quaternion q;
+        q.setRPY(0, 0, (direction)*M_PI/180.0);
+        ref_dir_pose.pose.orientation.x = q.x();
+        ref_dir_pose.pose.orientation.y = q.y();
+        ref_dir_pose.pose.orientation.z = q.z();
+        ref_dir_pose.pose.orientation.w = q.w();
+
+        goal_pose.header.frame_id = "chassis";
+        goal_pose.header.stamp = ros::Time::now();
+        goal_pose.pose.position.y = (goal_x - robot_pose_x);
+        goal_pose.pose.position.x = -(goal_y - robot_pose_y);
+        q.setRPY(0, 0, (ref_direction+180)*M_PI/180.0);
+        goal_pose.pose.orientation.x = q.x();
+        goal_pose.pose.orientation.y = q.y();
+        goal_pose.pose.orientation.z = q.z();
+        goal_pose.pose.orientation.w = q.w();
+
+        ref_dir_pose_pub_.publish(ref_dir_pose);
+        goal_pose_pub_.publish(goal_pose);
+    }
+
+}
+
+void VFHController::local_planner_pub() {
+    
+    // DEBUG - overall cost
+    if (verbose) {
+        if (!ctrl_word) {
+            std::vector<double> overall_cost(num_of_sector,0.075);
+            std_msgs::Float64MultiArray overall_cost_debug;
+            for (int i=0; i<num_of_sector; i++) {
+                overall_cost_debug.data.push_back(overall_cost[i]);
+            }
+            overall_cost_pub_.publish(overall_cost_debug);
+        }
+    }
+    
+    // evaluate speed cmd
     double angular_speed = direction_gain*direction*M_PI/180.0;
-    double goal_dist_speed = (speed_upper_lim/5)*dist_from_point;
     if (abs(angular_speed) > speed_upper_lim/2) 
         angular_speed = angular_speed/abs(angular_speed)*speed_upper_lim/2; 
+
+    double min_dist_speed = (speed_gain * (min_dist - stop_distance));
+
+    double goal_dist_speed = speed_upper_lim;
+    if (dist_from_point>0)
+        goal_dist_speed = (speed_upper_lim/5)*dist_from_point;
+
+    speed_cmd = min(min(speed_cmd,speed_upper_lim-abs(angular_speed)),goal_dist_speed);
+        
+    if( abs(speed_cmd-speed_cmd_prev)*node_frequency > linear_accel_lim){
+        double sign = (speed_cmd-speed_cmd_prev)/abs(speed_cmd-speed_cmd_prev);
+        speed_cmd = speed_cmd_prev + sign*linear_accel_lim/node_frequency;
+    }
     
+    if (speed_cmd > speed_upper_lim)
+        speed_cmd = speed_upper_lim;
+    if (speed_cmd < 0)
+        speed_cmd = 0;
+
+    if (stop)
+        speed_cmd = 0;
+
+    speed_cmd_prev = speed_cmd;
+
+    // Publish DEBUG message    
+    if (verbose) {
+        std_msgs::Float64MultiArray var_debug;
+        var_debug.data.push_back(ctrl_word);
+        var_debug.data.push_back(min_dist);
+        var_debug.data.push_back(lateral_dist);
+        var_debug.data.push_back(ref_direction);
+        var_debug.data.push_back(direction);
+        var_debug.data.push_back(speed_cmd);
+        var_debug.data.push_back(goal_x);
+        var_debug.data.push_back(goal_y);
+        var_debug.data.push_back(dist_from_point);
+        var_debug.data.push_back(path_point_received);
+        debug_pub_.publish(var_debug);
+    }
+
+    // Publish local planner message    
     geometry_msgs::Twist planner_msg;
     planner_msg.linear.x = min(min(speed_cmd,speed_upper_lim-abs(angular_speed)),goal_dist_speed);
-    planner_msg.linear.z = ctrl_word;
+    planner_msg.linear.z = 0;//ctrl_word;
     planner_msg.angular.z = angular_speed;
     local_planner_pub_.publish(planner_msg);
-
-    // fill ref dir and goal pose 
-    ref_dir_pose.header.frame_id = "chassis";
-    ref_dir_pose.header.stamp = ros::Time::now();
-    ref_dir_pose.pose.position.x = 0;
-    ref_dir_pose.pose.position.y = 0;
-    tf::Quaternion q;
-    q.setRPY(0, 0, (direction)*M_PI/180.0);
-    ref_dir_pose.pose.orientation.x = q.x();
-    ref_dir_pose.pose.orientation.y = q.y();
-    ref_dir_pose.pose.orientation.z = q.z();
-    ref_dir_pose.pose.orientation.w = q.w();
-
-
-    goal_pose.header.frame_id = "chassis";
-    goal_pose.header.stamp = ros::Time::now();
-    goal_pose.pose.position.y = (goal_x - robot_pose_x);
-    goal_pose.pose.position.x = -(goal_y - robot_pose_y);
-    q.setRPY(0, 0, (ref_direction+180)*M_PI/180.0);
-    goal_pose.pose.orientation.x = q.x();
-    goal_pose.pose.orientation.y = q.y();
-    goal_pose.pose.orientation.z = q.z();
-    goal_pose.pose.orientation.w = q.w();
-
-
-    ref_dir_pose_pub_.publish(ref_dir_pose);
-    goal_pose_pub_.publish(goal_pose);
 
 }
 
@@ -711,6 +779,7 @@ int main(int argc, char** argv)
         auto start = std::chrono::steady_clock::now();
         VFHController.update_pers_map();
         VFHController.vfhController();
+        VFHController.local_planner_pub();
         auto end = std::chrono::steady_clock::now();
         std::chrono::duration<double> diff = end - start;
         // std::cout << "Duration [seconds]: " << diff.count() << std::endl;
