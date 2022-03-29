@@ -722,7 +722,8 @@ void VFHController::local_planner_pub() {
     if (dist_from_point>0)
         goal_dist_speed = (speed_upper_lim/5)*dist_from_point;
 
-    speed_cmd = min(min(speed_cmd,speed_upper_lim-abs(angular_speed)),goal_dist_speed);
+    if (ctrl_word) 
+        speed_cmd = min(min(min_dist_speed,speed_upper_lim-abs(angular_speed)),goal_dist_speed);
         
     if( abs(speed_cmd-speed_cmd_prev)*node_frequency > linear_accel_lim){
         double sign = (speed_cmd-speed_cmd_prev)/abs(speed_cmd-speed_cmd_prev);
