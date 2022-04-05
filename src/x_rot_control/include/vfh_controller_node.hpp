@@ -74,7 +74,7 @@ private:
     double pers_dist_th;                    // distance threshold used to determine close points  
     int consensus_th;                       // consensus threshold used to confirm measures 
     // local planner parameters - main
-	double ref_direction;                   // target direction (GOAL) [deg]. When local planner has not control of the robot its value is -1.
+	double ref_direction;                   // target direction (GOAL) [deg]. When local planner has not control of the robot its value is 0.
 	double lateral_dist;                    // lateral distance with respect to GOAL [m]. When local planner has not control of the robot its value is -1.
     double dist_from_point;                 // euclidean distance from GOAL [m]. When local planner has not control of the robot its value is -1.
     bool path_point_received;               // TRUE when GOAL is received from CAN. FALSE when the GOAL is reached.
