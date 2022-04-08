@@ -6,8 +6,10 @@ Panels:
       Expanded:
         - /Global Options1
         - /Status1
+        - /Grid1
         - /debug_map1
         - /Path1
+        - /Pose1
       Splitter Ratio: 0.3333333432674408
     Tree Height: 831
   - Class: rviz/Selection
@@ -51,7 +53,7 @@ Visualization Manager:
         Y: 0
         Z: 0
       Plane: XY
-      Plane Cell Count: 10
+      Plane Cell Count: 100
       Reference Frame: <Fixed Frame>
       Value: true
     - Alpha: 1
@@ -305,6 +307,28 @@ Visualization Manager:
       Topic: /trajectory
       Unreliable: false
       Value: true
+    - Alpha: 1
+      Axes Length: 1
+      Axes Radius: 0.10000000149011612
+      Class: rviz/Pose
+      Color: 255; 25; 0
+      Enabled: true
+      Head Length: 0.30000001192092896
+      Head Radius: 0.800000011920929
+      Name: Pose
+      Shaft Length: 1
+      Shaft Radius: 0.5
+      Shape: Arrow
+      Topic: /goal_pose
+      Unreliable: false
+      Value: true
+    - Class: rviz/Axes
+      Enabled: true
+      Length: 1
+      Name: Axes
+      Radius: 0.10000000149011612
+      Reference Frame: <Fixed Frame>
+      Value: true
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
@@ -332,7 +356,7 @@ Visualization Manager:
   Value: true
   Views:
     Current:
-      Angle: 0
+      Angle: 0.11999999731779099
       Class: rviz/TopDownOrtho
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
@@ -342,11 +366,11 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Scale: 22.0296630859375
+      Scale: 33.072242736816406
       Target Frame: zedm_left_camera_frame
       Value: TopDownOrtho (rviz)
-      X: 0.6572514176368713
-      Y: 3.710343837738037
+      X: 1.3058217763900757
+      Y: 0.9563124775886536
     Saved: ~
 Window Geometry:
   Displays:

@@ -32,7 +32,7 @@ VFHController::VFHController(ros::NodeHandle* nodehandle):nh_(*nodehandle)
     // local planner parameters - direction
 	direction = 0;
     prev_direction = 0;
-    direction_gain = 0.5;
+    direction_gain = 0.9;
     direction_speed_lim = 10;
     // local planner parameters - linear speed
     speed_upper_lim = 0.5;
@@ -54,8 +54,9 @@ VFHController::VFHController(ros::NodeHandle* nodehandle):nh_(*nodehandle)
     // local planner parameters - goal point
     goal_x = 0.0;
     goal_y = 0.0;
-    dist_to_goal_th = 0.3; // [m]
-    lateral_dist_th = 0.2; // [m]
+    angle_to_goal_th = 15; // [m]
+    lateral_dist_th = 1; // [m]
+    goal_dist_th = 2.5; // [m]
     // verbse
     verbose = true;
      
@@ -98,8 +99,9 @@ void VFHController::reconfigureCallback(x_rot_control::x_rot_controlConfig &conf
     // local planner START/STOP parameters
     max_detection_dist = config.max_detection_dist;
     max_angle_dist = config.max_angle_dist;
-    dist_to_goal_th = config.dist_to_goal_th;
+    angle_to_goal_th = config.angle_to_goal_th;
     lateral_dist_th = config.lateral_dist_th;
+    goal_dist_th = config.goal_dist_th;
     // linear speed cmd parameters
     stop_distance = config.stop_distance;
     speed_upper_lim = config.speed_upper_lim;
@@ -129,6 +131,7 @@ void VFHController::initializeSubscribers()
     robot_pose_sub_ = nh_.subscribe("/yape/odom_diffdrive", 1, &VFHController::robotPoseCallback,this);
     robot_pose_sub_2 = nh_.subscribe("/can_odometry", 1, &VFHController::robotPoseCallback_2,this);  
     path_point_sub_ = nh_.subscribe("/path_point", 1, &VFHController::pathPointCallback,this);  
+    trajectory_sub_ = nh_.subscribe("/trajectory", 1, &VFHController::trajectoryCallback,this);  
     radar_points_sub_ = nh_.subscribe("/radar_messages", 1, &VFHController::radarPointsCallback,this);
     radar_points_sub_2 = nh_.subscribe("/radar", 1, &VFHController::radarPointsCallback_2,this);  
 }
@@ -225,8 +228,12 @@ void VFHController::robotPoseCallback_2(const nav_msgs::Odometry& msg) {
         ref_direction = 180/M_PI*(atan2(delta_y,delta_x) - robot_pose_theta);
 
         dist_from_point = sqrt(pow(delta_x,2) + pow(delta_y,2));
-        double ang = atan2(delta_y,delta_x);
-        lateral_dist = abs(dist_from_point*cos(ang));
+        // double ang = atan2(delta_y,delta_x);
+        // lateral_dist = abs(dist_from_point*cos(ang));
+
+        double a = -tan(path_direction);
+        double c = -a*goal_x - goal_y;
+        lateral_dist = abs(robot_pose_x*a + robot_pose_y + c)/sqrt(a*a+1);
 
         if (ref_direction<0)
             ref_direction = 360 + ref_direction;      
@@ -254,6 +261,7 @@ void VFHController::pathPointCallback(const nav_msgs::Odometry& msg) {
 
 void VFHController::trajectoryCallback(const nav_msgs::Path& msg) {
 
+    path_points.clear();
     for (int i=0; i<msg.poses.size(); i++) {
         std::vector<double> xy_coord = {msg.poses[i].pose.position.x, msg.poses[i].pose.position.y};
         path_points.push_back(xy_coord);
@@ -262,7 +270,7 @@ void VFHController::trajectoryCallback(const nav_msgs::Path& msg) {
     // goal_x = path_point_x;
     // goal_y = path_point_y;
 
-    // path_point_received = true;
+    path_point_received = true;
 
 }
 
@@ -480,6 +488,126 @@ int VFHController::search_closest(const std::vector<int>& sorted_array, int valu
 
 }
 
+void VFHController::update_goal_position(){
+    std::vector<double> dists;
+
+    if (path_points.size()==0) {
+        return;
+    }
+    double path_x, path_x2, path_y, path_y2, diff_x, diff_y; 
+
+    // cout << "\n----------------------------------------------------\n";
+    // std::cout << "\nrobot poses \n";
+    // std::cout << robot_pose_x << "," << robot_pose_y << "\t";
+    // std::cout << "\npath_points \n";
+    // for (int i=0; i<path_points.size(); i++) {
+    //     std::cout << path_points[i][0] << "," << path_points[i][1] << "\t";
+    // }
+    // select goal at distance max_detection_dist
+    double path_length=0;
+    int goal_index=0;
+    int closest_point_index=0;
+    for(int i=0;i<path_points.size();i++){
+        path_x = path_points[i][0];
+        path_y = path_points[i][1];
+        diff_x = path_x - robot_pose_x;
+        diff_y = path_y - robot_pose_y;
+        double ang = atan2(diff_y,diff_x) - robot_pose_theta;
+        if(abs(ang*180/M_PI)<90){
+            double dist_projected = sqrt(diff_y*diff_y + diff_x*diff_x) * cos(ang);
+            dists.push_back(dist_projected);
+        } 
+        else {
+            dists.push_back(1000);
+        }
+    }
+    // std::cout << "\ndists vect \n";
+    // //find min;
+    // for (int i=0; i<dists.size(); i++) {
+    //     std::cout << dists[i] << "\t";
+    // }
+
+    closest_point_index = min_element(dists.begin(),dists.end()) - dists.begin();
+    path_length += dists[closest_point_index];
+    // std::cout << "\npath_length: " << path_length << "\n";
+    // std::cout << "closest_point_index: " << closest_point_index << "\n";
+
+    goal_index = path_points.size()-1;
+
+    goal_x = path_points[goal_index][0];
+    goal_y = path_points[goal_index][1];
+
+    path_x = path_points[goal_index-1][0];
+    path_y = path_points[goal_index-1][1];
+
+    path_x2 = path_points[goal_index][0];
+    path_y2 = path_points[goal_index][1];
+
+    diff_x = path_x2 - path_x;
+    diff_y = path_y2 - path_y;
+
+    path_direction = atan2(diff_y,diff_x);
+
+    for (int i=closest_point_index; i<path_points.size()-1; i++) {
+        path_x = path_points[i][0];
+        path_y = path_points[i][1];
+
+        path_x2 = path_points[i+1][0];
+        path_y2 = path_points[i+1][1];
+
+        diff_x = path_x2 - path_x;
+        diff_y = path_y2 - path_y;
+
+        double ds = sqrt(diff_y*diff_y + diff_x*diff_x);
+        path_length += ds;
+
+        if(path_length>=goal_dist_th){
+            goal_index = i;
+            goal_x = path_points[goal_index][0];
+            goal_y = path_points[goal_index][1];
+            break;
+        }
+
+    }
+    // std::cout << "path_length: " << path_length << "\n";
+    // std::cout << "goal_index: " << goal_index << "\n";
+    // std::cout << "goal_x: " << goal_x << "\n";
+    // std::cout << "goal_y: " << goal_y << "\n";
+
+    //update goal orientation
+    if((goal_index-1)>=0 && (goal_index+1)<path_points.size()){
+        //first ang
+        path_x = path_points[goal_index-1][0];
+        path_y = path_points[goal_index-1][1];
+
+        path_x2 = path_points[goal_index][0];
+        path_y2 = path_points[goal_index][1];
+
+        diff_x = path_x2 - path_x;
+        diff_y = path_y2 - path_y;
+
+        double angle1 = atan2(diff_y,diff_x);
+        
+        //second ang
+        path_x = path_points[goal_index][0];
+        path_y = path_points[goal_index][1];
+
+        path_x2 = path_points[goal_index+1][0];
+        path_y2 = path_points[goal_index+1][1];
+
+        diff_x = path_x2 - path_x;
+        diff_y = path_y2 - path_y;
+
+        double angle2 = atan2(diff_y,diff_x);
+
+        path_direction = angle1/2 + angle2/2;
+
+    }
+    // std::cout << "path_direction: " << path_direction << "\n";
+    // std::cout << "robot_pose_theta: " << robot_pose_theta << "\n";
+    
+}
+
 void VFHController::vfhController() {
     int data_length = meas_x_filtered.size();
     direction = 0; // ref_direction==-1 ? 0 : ref_direction
@@ -489,7 +617,9 @@ void VFHController::vfhController() {
         return;
     }
     
-    if (!stop && lateral_dist<lateral_dist_th && dist_from_point<dist_to_goal_th && lateral_dist>0 && dist_from_point>0){   
+    // cout << "\nlateral_dist: "<< lateral_dist << endl;
+    // cout << "ang diff: "<< abs(robot_pose_theta-path_direction)*180/M_PI << endl;
+    if (!stop && lateral_dist<lateral_dist_th && lateral_dist>0 && abs(robot_pose_theta-path_direction)*180/M_PI<angle_to_goal_th && weights_inverted){   
         // Reset local planner params     
         dist_from_point = -1;
         lateral_dist = -1;
@@ -565,6 +695,8 @@ void VFHController::vfhController() {
 
     if (!ctrl_word) 
         return;
+
+    update_goal_position();
         
     // define sector limits 
     size_t data_size = sizeof(measures_x)/sizeof(measures_x[0]);

@@ -32,9 +32,9 @@ class xrot_position_control:
         self.state_msg = LinkState()
         self.state_msg.link_name = 'footprint'
         self.state_msg.reference_frame = 'world'
-        self.path_point_distance = 6 # [cm] IF 0 -> send 10 points (trajectory)
+        self.path_point_distance = 10 # [cm] IF 0 -> send 10 points (trajectory)
         self.Allarm_ON_prev = 0
-        self.num_points = 10
+        self.num_points = 15
         self.path_ind = self.num_points
         
         self.bus = can.interface.Bus(bustype='socketcan', channel='can0', bitrate=250000)
@@ -83,6 +83,7 @@ class xrot_position_control:
 
         if(self.Allarm_ON_prev==0 and self.Allarm_ON==1):
             self.path_ind = 0
+            self.trajectory.poses = []
         
         if self.path_ind < self.num_points:
             self.send_path_request()
@@ -170,6 +171,10 @@ class xrot_position_control:
                     angle = np.float32(num)/100
 
                 quat = quaternion_from_euler(0, 0, angle)
+
+                self.vehicle_x = pos_x
+                self.vehicle_y = pos_y
+                self.vehicle_ang = angle
                 
                 self.state_msg.pose.position.x = pos_x
                 self.state_msg.pose.position.y = pos_y
@@ -256,6 +261,7 @@ class xrot_position_control:
                     self.trajectory.poses.append(point_pose)
 
                 if self.path_ind==(self.num_points-1):
+                    self.path_ind = self.num_points
                     self.pub_trajectory.publish(self.trajectory)      
                 
         except:

@@ -46,6 +46,7 @@ private:
     ros::NodeHandle nh_; 
     ros::Subscriber robot_pose_sub_,robot_pose_sub_2; 
     ros::Subscriber path_point_sub_; 
+    ros::Subscriber trajectory_sub_; 
     ros::Subscriber radar_points_sub_,radar_points_sub_2; 
     ros::Publisher  local_planner_pub_;
     ros::Publisher  cloud_pub_;
@@ -116,8 +117,10 @@ private:
     vector< vector<double> > path_points;   // PATH from max_detection_dist to GOAL [m] MAP frame
     double goal_x;                          // GOAL x position in MAP frame [m]
     double goal_y;                          // GOAL y position in MAP frame [m]
-    float dist_to_goal_th;                  // distance threshold that toghether with 'lateral_dist_th' determine the END of the avoidance manouver. [m]
+    float angle_to_goal_th;                 // angle threshold that toghether with 'lateral_dist_th' determine the END of the avoidance manouver. [m]
     float lateral_dist_th;                  // distance threshold that toghether with 'dist_to_goal_th' determine the END of the avoidance manouver. [m]
+    double path_direction;
+    float goal_dist_th;
     // Transformation matrices 
     Matrix<double, 3, 3> vehicle_to_radar;  // vehicle to radar transformation matrix
     Matrix<double, 3, 3> map_to_vehicle;    // map to vehicle transformation matrix
@@ -144,6 +147,7 @@ private:
 	void buildCost(std::vector<double>& cost_vec, int sector_index, double gaussian_shift, std::vector<int>& sector_array, double gaussian_weight, int w1, double w2);
 	double findGaussianWeight(double coeff[]);
     int search_closest(const std::vector<int>& sorted_array, int value);
+    void update_goal_position();
     // Methods for dynamic reconfiguration of parameters
     void reconfigureCallback(x_rot_control::x_rot_controlConfig &config, uint32_t level);
    
