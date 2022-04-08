@@ -14,6 +14,7 @@ find_package(catkin REQUIRED
   radar_pa_msgs
   pcl_ros
   dynamic_reconfigure
+  message_generation
 )
 
 
@@ -53,8 +54,8 @@ find_package(catkin REQUIRED
 ## Generate messages in the 'msg' folder
 # add_message_files(
 #   FILES
-#   Message1.msg
-#   Message2.msg
+#   PathPoint.msg
+#   Trajectory.msg
 # )
 
 ## Generate services in the 'srv' folder
@@ -109,6 +110,7 @@ catkin_package(
   INCLUDE_DIRS
   LIBRARIES
   CATKIN_DEPENDS
+    message_runtime
     roscpp
     rospy
     geometry_msgs

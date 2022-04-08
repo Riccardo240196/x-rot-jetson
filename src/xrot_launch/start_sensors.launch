@@ -14,22 +14,26 @@
 	</nclude>  -->
 
 	<!-- Sensors on CAN (RADAR and Laserline Sonar) -->
-	<node pkg="socketcan_bridge" type="socketcan_to_topic_node" name="socketcan_to_topic_node" output="log">
-    </node>
-	<node pkg="radar_pa" type="radar_pa_node.py" name="radar_pa_node" output="log">
-    </node>
-	<node name="radar2pcd_pa_node" pkg="radar_pa" type="radar2pcd_pa_node.py" output="log" />
+	<node pkg="socketcan_bridge" type="socketcan_to_topic_node" name="socketcan_to_topic_node" output="screen" respawn="true">
+		<param name="can_device" type="string" value="can1" />
+	</node>
+	<node pkg="radar_pa" type="radar_pa_node.py" name="radar_pa_node" output="log" respawn="true" ></node>
+	<node name="radar2pcd_pa_node" pkg="radar_pa" type="radar2pcd_pa_node.py" output="log" respawn="true"/>
 
 
 	<!-- SONAR maxbotix-->
-	<node pkg="maxbotixs_sonar" type="max_botixs1_driver_ros.py" name="maxbotix_sonar" output="screen">
+	<!-- <node pkg="maxbotixs_sonar" type="max_botixs1_driver_ros.py" name="maxbotix_sonar" output="screen">
     </node>
 
 	<node pkg="maxbotixs_sonar" type="max_botixs2_driver_ros.py" name="maxbotix_sonar2" output="screen">
-    </node>
+    </node> -->
+
+	<include file="$(find xrot_launch)/xrot_tf.launch"/> 
 
 	<!-- RECORD -->
-	<include file="$(find xrot_launch)/xrot_record.launch"> 
-	</include> 
+	<!-- <include file="$(find xrot_launch)/xrot_record.launch"> 
+	</include>  -->
+
+	
 
 </launch>

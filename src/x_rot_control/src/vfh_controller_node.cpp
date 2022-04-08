@@ -7,6 +7,9 @@ VFHController::VFHController(ros::NodeHandle* nodehandle):nh_(*nodehandle)
     initializeSubscribers(); 
     initializePublishers();
 
+    ros::NodeHandle private_nh("~");
+    private_nh.param<bool>("stop_mode", stop_mode, false);
+
     // FOR DETAILS OF THE DEFINITION OF EACH PARAMETER SEE 'vfh_controller_node.hpp'
     node_frequency = 10;
     // persistency map parameters
@@ -24,7 +27,7 @@ VFHController::VFHController(ros::NodeHandle* nodehandle):nh_(*nodehandle)
     stop = 0;
     max_detection_dist = 6;
     max_angle_dist = 20;
-    stop_distance = 1.2;
+    stop_distance = 2;
     min_dist = 100;
     // local planner parameters - direction
 	direction = 0;
@@ -140,7 +143,7 @@ void VFHController::initializePublishers()
     ref_dir_pose_pub_ = nh_.advertise<geometry_msgs::PoseStamped> ("/ref_dir_pose",1);
 }
 
-void VFHController::robotPoseCallback(const nav_msgs::Odometry& msg) {
+void VFHController::robotPoseCallback(const nav_msgs::Odometry& msg) { // GAZEBO
     robot_pose_x = msg.pose.pose.position.x;
     robot_pose_y = msg.pose.pose.position.y;
     tf::Quaternion q(
@@ -232,7 +235,8 @@ void VFHController::robotPoseCallback_2(const nav_msgs::Odometry& msg) {
         ref_direction = 0;
         lateral_dist = -1;
         dist_from_point = -1;
-    } 
+    }
+
     
 }
 
@@ -248,6 +252,20 @@ void VFHController::pathPointCallback(const nav_msgs::Odometry& msg) {
     // cout<< "path point! "<<path_point_x <<" " <<path_point_y <<endl;
 }
 
+void VFHController::trajectoryCallback(const nav_msgs::Path& msg) {
+
+    for (int i=0; i<msg.poses.size(); i++) {
+        std::vector<double> xy_coord = {msg.poses[i].pose.position.x, msg.poses[i].pose.position.y};
+        path_points.push_back(xy_coord);
+    }
+    
+    // goal_x = path_point_x;
+    // goal_y = path_point_y;
+
+    // path_point_received = true;
+
+}
+
 void VFHController::radarPointsCallback(const radar_pa_msgs::radar_msg& msg) {
     // spacchetta i messagi del radar e trasforma i punti in X e Y
     Matrix<double, 3, 1> temp;
@@ -257,20 +275,21 @@ void VFHController::radarPointsCallback(const radar_pa_msgs::radar_msg& msg) {
     meas_raw_y.clear();
 
     for(int i = 0; i< msg.data_A.size(); i++){
-        temp(0) = msg.data_A[i].distance*cos(msg.data_A[i].angle);
-        temp(1) = msg.data_A[i].distance*sin(msg.data_A[i].angle);
-        temp(2) = 1;
-                
-        temp = map_to_vehicle*vehicle_to_radar*temp;
+        if(msg.data_A[i].is_target){
+            temp(0) = msg.data_A[i].distance*cos(msg.data_A[i].angle);
+            temp(1) = msg.data_A[i].distance*sin(msg.data_A[i].angle);
+            temp(2) = 1;
+                    
+            temp = map_to_vehicle*vehicle_to_radar*temp;
 
-        meas_raw_x.push_back(temp(0));
-        meas_raw_y.push_back(temp(1));      
-
+            meas_raw_x.push_back(temp(0));
+            meas_raw_y.push_back(temp(1));      
+        }
     }  
     
 }
 
-void VFHController::radarPointsCallback_2(const sensor_msgs::LaserScan& msg){
+void VFHController::radarPointsCallback_2(const sensor_msgs::LaserScan& msg){ // GAZEBO
     // spacchetta i messagi del radar e trasforma i punti in X e Y
     Matrix<double, 3, 1> temp;
     // pcl::PointXYZ point;
@@ -334,7 +353,6 @@ void VFHController::update_pers_map(){
         
     }
 
-    vector<double> null={-1, -1, -1, -1}; // NON SERVE PIù??
     meas_x_filtered.clear();
     meas_y_filtered.clear();
     
@@ -465,7 +483,7 @@ int VFHController::search_closest(const std::vector<int>& sorted_array, int valu
 void VFHController::vfhController() {
     int data_length = meas_x_filtered.size();
     direction = 0; // ref_direction==-1 ? 0 : ref_direction
-    speed_cmd = 0.5; // 0
+    speed_cmd = 0; // 0
 
     if(data_length==0 && ctrl_word==0){
         return;
@@ -531,10 +549,12 @@ void VFHController::vfhController() {
     }  
 
     // set STOP and CTRL_WORD var
-    if (min_stop_dist < stop_distance) {
+    if ((!stop && min_stop_dist < stop_distance)||
+        (stop && min_stop_dist < (stop_distance+0.1))||
+        (ref_direction>90 && ref_direction<270)){
         stop = 1;
         ctrl_word = 1;
-    } else if (min_dist < max_detection_dist || lateral_dist > 0 || path_point_received) {
+    } else if (min_dist < max_detection_dist || path_point_received) {
         stop = 0;
         ctrl_word = 1;
     } else {
@@ -542,9 +562,6 @@ void VFHController::vfhController() {
         ctrl_word = 0;
         path_point_received = false;
     }
-    
-    if (min_dist >= max_detection_dist) 
-        min_dist = max_detection_dist;
 
     if (!ctrl_word) 
         return;
@@ -653,7 +670,7 @@ void VFHController::vfhController() {
   
     if (stop)
         direction = 0;
-    else if (ctrl_word)
+    else if (ctrl_word && !stop_mode)
         direction = sector_limits_up[idx]-sector_width/2;
     else
         direction = 0;
@@ -744,6 +761,7 @@ void VFHController::local_planner_pub() {
     if (verbose) {
         std_msgs::Float64MultiArray var_debug;
         var_debug.data.push_back(ctrl_word);
+        var_debug.data.push_back(stop);
         var_debug.data.push_back(min_dist);
         var_debug.data.push_back(lateral_dist);
         var_debug.data.push_back(ref_direction);
@@ -759,7 +777,7 @@ void VFHController::local_planner_pub() {
     // Publish local planner message    
     geometry_msgs::Twist planner_msg;
     planner_msg.linear.x = min(min(speed_cmd,speed_upper_lim-abs(angular_speed)),goal_dist_speed);
-    planner_msg.linear.z = 0;//ctrl_word;
+    planner_msg.linear.z = ctrl_word;
     planner_msg.angular.z = angular_speed;
     local_planner_pub_.publish(planner_msg);
 

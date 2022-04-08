@@ -11,7 +11,9 @@ from gazebo_msgs.srv import SetLinkState
 from gazebo_msgs.msg import LinkState
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import Twist
+from geometry_msgs.msg import PoseStamped
 from sensor_msgs.msg import Range
+from nav_msgs.msg import Path
 
 import can
 import cantools
@@ -30,16 +32,24 @@ class xrot_position_control:
         self.state_msg = LinkState()
         self.state_msg.link_name = 'footprint'
         self.state_msg.reference_frame = 'world'
-        self.path_point_distance = 20 # [cm]
+        self.path_point_distance = 6 # [cm] IF 0 -> send 10 points (trajectory)
         self.Allarm_ON_prev = 0
+        self.num_points = 10
+        self.path_ind = self.num_points
         
         self.bus = can.interface.Bus(bustype='socketcan', channel='can0', bitrate=250000)
         # self.bus = can.interface.Bus(bustype='pcan', channel='PCAN_USBBUS1', bitrate=250000)
-        self.bus.set_filters([{"can_id": 0x104, "can_mask":0xFFFFFFF },{"can_id": 0x304, "can_mask":0xFFFFFFF },{"can_id": 0x690, "can_mask":0xFFFFFFF }]) 
+        self.bus.set_filters([{"can_id": 0x104, "can_mask":0xFFFFFFF },{"can_id": 0x304, "can_mask":0xFFFFFFF },{"can_id": 0x690, "can_mask":0xFFFFFFF },
+                              {"can_id": 0x190, "can_mask":0xFFFFFFF },{"can_id": 0x210, "can_mask":0xFFFFFFF },{"can_id": 0x290, "can_mask":0xFFFFFFF },
+                              {"can_id": 0x310, "can_mask":0xFFFFFFF },{"can_id": 0x390, "can_mask":0xFFFFFFF },{"can_id": 0x410, "can_mask":0xFFFFFFF },
+                              {"can_id": 0x490, "can_mask":0xFFFFFFF },{"can_id": 0x510, "can_mask":0xFFFFFFF },{"can_id": 0x590, "can_mask":0xFFFFFFF },
+                              {"can_id": 0x610, "can_mask":0xFFFFFFF }]) 
         self.pub_can_odometry = rospy.Publisher('can_odometry', Odometry, queue_size=1)
         self.can_odometry = Odometry()
         self.pub_path_point = rospy.Publisher('path_point', Odometry, queue_size=1)
         self.path_point = Odometry()
+        self.pub_trajectory = rospy.Publisher('trajectory', Path, queue_size=1)
+        self.trajectory = Path()
         self.pub_speed_request = rospy.Publisher('speed_request', Twist, queue_size=1)
         self.speed_request = Twist()
 
@@ -61,20 +71,20 @@ class xrot_position_control:
         self.Closes_Obst_Orient = 0
         self.Speed_Request = 128
         self.Steering_Request = 128
-        self.received_path = False
 
     def cmd_vel_cbk(self,msg):
         self.Allarm_ON = msg.linear.z
         self.Request_Control = msg.linear.z
         self.Closes_Obst_Dist = 0
         self.Closes_Obst_Orient = 0
-        self.Speed_Request = int(128 + msg.linear.x*127)*self.Allarm_ON
-        self.Steering_Request = int((-msg.angular.z + 0.75)*255/1.5) # 0 full left (positive omega), 255 full rigth (negative omega)
-        # print(self.Speed_Request, self.Steering_Request)
+        self.Speed_Request = int(round(128 + msg.linear.x*127)*self.Allarm_ON)
+        self.Steering_Request = int(round((-msg.angular.z + 0.75)*255/1.5)) # 0 full left (positive omega), 255 full rigth (negative omega)
         self.send_local_planner()
 
         if(self.Allarm_ON_prev==0 and self.Allarm_ON==1):
-            self.received_path = False
+            self.path_ind = 0
+        
+        if self.path_ind < self.num_points:
             self.send_path_request()
 
         self.Allarm_ON_prev = self.Allarm_ON   
@@ -92,6 +102,7 @@ class xrot_position_control:
                                     'Speed_Request': self.Speed_Request,
                                     'Steering_Request': self.Steering_Request
                                     })
+
         # print(message_def.frame_id)
         message = can.Message(arbitration_id=message_def.frame_id,extended_id=False, data=data, timestamp=rospy.get_time())
         
@@ -99,10 +110,9 @@ class xrot_position_control:
 
     def send_path_request(self):
         message_def = self.db.get_message_by_name('LocalPlannerPathRequest')
-        data = message_def.encode({ 'Distance': self.path_point_distance})
+        data = message_def.encode({ 'Distance': self.path_point_distance+self.path_ind})
         message = can.Message(arbitration_id=message_def.frame_id,extended_id=False, data=data, timestamp=rospy.get_time())
         self.bus.send(message)
-        # print(message)
 
     def set_state(self):
         try:
@@ -117,6 +127,7 @@ class xrot_position_control:
         msg = self.bus.recv(0.1)
 
         try:
+            # vehicle pose
             if msg.arbitration_id == 0x304:
 
                 data = list(msg.data)
@@ -176,7 +187,8 @@ class xrot_position_control:
                 self.can_odometry.pose.pose.orientation.w = quat[3]
 
                 self.pub_can_odometry.publish(self.can_odometry)
-            
+
+            # custom path point
             if msg.arbitration_id == 0x690:
 
                 data = list(msg.data)
@@ -221,18 +233,31 @@ class xrot_position_control:
                 
                 quat = quaternion_from_euler(0, 0, angle)
 
-                self.path_point.pose.pose.position.x = pos_x
-                self.path_point.pose.pose.position.y = pos_y
-                self.path_point.pose.pose.orientation.x = quat[0]
-                self.path_point.pose.pose.orientation.y = quat[1]
-                self.path_point.pose.pose.orientation.z = quat[2]
-                self.path_point.pose.pose.orientation.w = quat[3]
+                # self.path_point.pose.pose.position.x = pos_x
+                # self.path_point.pose.pose.position.y = pos_y
+                # self.path_point.pose.pose.orientation.x = quat[0]
+                # self.path_point.pose.pose.orientation.y = quat[1]
+                # self.path_point.pose.pose.orientation.z = quat[2]
+                # self.path_point.pose.pose.orientation.w = quat[3]
 
-                self.pub_path_point.publish(self.path_point)
+                # self.pub_path_point.publish(self.path_point)
+                point_pose = PoseStamped()
+                point_pose.pose.position.x = pos_x
+                point_pose.pose.position.y = pos_y
+                point_pose.pose.orientation.x = quat[0]
+                point_pose.pose.orientation.y = quat[1]
+                point_pose.pose.orientation.z = quat[2]
+                point_pose.pose.orientation.w = quat[3]
 
-                if(self.received_path==False):
-                    self.received_path = True
+                if self.path_ind==0 or (self.trajectory.poses[self.path_ind-1].pose.position.x != pos_x or self.trajectory.poses[self.path_ind-1].pose.position.y != pos_y):
+                    self.path_ind = self.path_ind + 1
+                    self.trajectory.header.frame_id = "chassis"
+                    self.trajectory.header.stamp = rospy.Time.now()
+                    self.trajectory.poses.append(point_pose)
 
+                if self.path_ind==(self.num_points-1):
+                    self.pub_trajectory.publish(self.trajectory)      
+                
         except:
             print("Nothing received this time")
 

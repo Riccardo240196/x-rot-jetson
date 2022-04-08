@@ -28,6 +28,7 @@
 #include <dynamic_reconfigure/server.h>
 #include <x_rot_control/x_rot_controlConfig.h>
 #include <geometry_msgs/PoseStamped.h>
+#include <nav_msgs/Path.h> 
 
 using namespace std;
 using namespace Eigen;
@@ -53,7 +54,9 @@ private:
     ros::Publisher  goal_pose_pub_, ref_dir_pose_pub_; 
     dynamic_reconfigure::Server<x_rot_control::x_rot_controlConfig> server;
     dynamic_reconfigure::Server<x_rot_control::x_rot_controlConfig>::CallbackType f;
-    
+
+    bool stop_mode;
+
     double robot_pose_x;                    // robot x in MAP frame (GPS) [m]
     double robot_pose_y;                    // robot y in MAP frame (GPS) [m]
     double robot_pose_theta;                // robot yaw in MAP frame (GPS) [rad]
@@ -110,6 +113,7 @@ private:
     double weight_inversion_lat_dist;       // lateral distance thresholds that triggers the 'target_dir_weight' and 'prev_dir_weight' inversion [m]
     bool weights_inverted;                  // TRUE if 'lateral_dist>weight_inversion_lat_dist'. FALSE when the GOAL is reached. 
     // local planner parameters - goal point
+    vector< vector<double> > path_points;   // PATH from max_detection_dist to GOAL [m] MAP frame
     double goal_x;                          // GOAL x position in MAP frame [m]
     double goal_y;                          // GOAL y position in MAP frame [m]
     float dist_to_goal_th;                  // distance threshold that toghether with 'lateral_dist_th' determine the END of the avoidance manouver. [m]
@@ -131,6 +135,7 @@ private:
     void robotPoseCallback(const nav_msgs::Odometry& msg); 
     void robotPoseCallback_2(const nav_msgs::Odometry& msg); 
     void pathPointCallback(const nav_msgs::Odometry& msg); 
+    void trajectoryCallback(const nav_msgs::Path& msg); 
     void radarPointsCallback(const radar_pa_msgs::radar_msg& msg); 
     void radarPointsCallback_2(const sensor_msgs::LaserScan& msg); 
 	// Methods for vector field histogram controller
