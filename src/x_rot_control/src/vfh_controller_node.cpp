@@ -907,11 +907,11 @@ void VFHController::local_planner_pub() {
         var_debug.data.push_back(lateral_dist);
         var_debug.data.push_back(ref_direction);
         var_debug.data.push_back(direction);
-        var_debug.data.push_back(min(min(speed_cmd,speed_upper_lim-abs(angular_speed)),goal_dist_speed));
+        var_debug.data.push_back(speed_cmd));
         var_debug.data.push_back(goal_x);
         var_debug.data.push_back(goal_y);
         var_debug.data.push_back(abs(robot_pose_theta-path_direction)*180/M_PI);
-        var_debug.data.push_back(weights_inverted);
+        var_debug.data.push_back(path_point_received);
         debug_pub_.publish(var_debug);
     }
 
