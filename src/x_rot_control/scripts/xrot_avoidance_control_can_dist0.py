@@ -85,12 +85,13 @@ class xrot_position_control:
             self.trajectory.poses.clear()
             for i in range(10):
                 self.trajectory.poses.append(PoseStamped())
-                self.path_ind[i] =  False
+                self.path_ind[i] = False
             self.trajectory.header.frame_id = "chassis"
             self.trajectory.header.stamp = rospy.Time.now()
             self.send_path_request()
         
-        if all(self.path_ind) :
+        if all(self.path_ind):
+            # TODO: trajectory deve essere inviato una sola volta!
             self.pub_trajectory.publish(self.trajectory) 
 
         self.Allarm_ON_prev = self.Allarm_ON   
