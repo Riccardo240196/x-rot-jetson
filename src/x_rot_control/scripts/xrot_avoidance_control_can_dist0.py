@@ -82,7 +82,7 @@ class xrot_position_control:
         self.send_local_planner()
 
         if(self.Allarm_ON_prev==0 and self.Allarm_ON==1):
-            self.trajectory.poses.clear()
+            self.trajectory.poses = []
             for i in range(10):
                 self.trajectory.poses.append(PoseStamped())
                 self.path_ind[i] =  False
@@ -90,6 +90,8 @@ class xrot_position_control:
             self.trajectory.header.stamp = rospy.Time.now()
             self.send_path_request()
         
+        # print("received points ", self.path_ind, all(self.path_ind) )
+
         if all(self.path_ind) :
             self.pub_trajectory.publish(self.trajectory) 
 
@@ -116,9 +118,10 @@ class xrot_position_control:
 
     def send_path_request(self):
         message_def = self.db.get_message_by_name('LocalPlannerPathRequest')
-        data = message_def.encode({ 'Distance': self.path_point_distance+self.path_ind})
+        data = message_def.encode({ 'Distance': self.path_point_distance})
         message = can.Message(arbitration_id=message_def.frame_id,extended_id=False, data=data, timestamp=rospy.get_time())
         self.bus.send(message)
+        # print("requested path points dist ",self.path_point_distance )
 
     def set_state(self):
         try:
@@ -257,6 +260,8 @@ class xrot_position_control:
                 self.path_ind[0] =  True
                 self.trajectory.poses[0] =  point_pose
 
+                # print("received point ",point_pose.pose.position,  msg.arbitration_id )
+
             if msg.arbitration_id == 0x210:
 
                 data = list(msg.data)
@@ -311,7 +316,9 @@ class xrot_position_control:
                 point_pose.pose.orientation.w = quat[3]
 
                 self.path_ind[1] =  True
-                self.trajectory.poses[1] =  point_pose; 
+                self.trajectory.poses[1] =  point_pose;
+
+                # print("received point ",point_pose.pose.position,  msg.arbitration_id ) 
 
             if msg.arbitration_id == 0x290:
 
@@ -367,7 +374,9 @@ class xrot_position_control:
                 point_pose.pose.orientation.w = quat[3]
 
                 self.path_ind[2] =  True
-                self.trajectory.poses[2] =  point_pose; 
+                self.trajectory.poses[2] =  point_pose;
+
+                # print("received point ",point_pose.pose.position,  msg.arbitration_id ) 
                 
             if msg.arbitration_id == 0x310:
 
@@ -759,9 +768,12 @@ class xrot_position_control:
                 point_pose.pose.orientation.w = quat[3]
 
                 self.path_ind[9] =  True
-                self.trajectory.poses[9] =  point_pose; 
+                self.trajectory.poses[9] =  point_pose
+
+                # print("received point ",point_pose.pose.position,  msg.arbitration_id ) 
                 
         except:
+            # pass
             print("Nothing received this time")
 
         sleep(0.01)    
@@ -774,7 +786,7 @@ class xrot_position_control:
         while not rospy.is_shutdown():
             rate.sleep()
             self.read_pos_from_can()
-            # self.set_state()
+            self.set_state()
             self.send_local_planner()
           
 

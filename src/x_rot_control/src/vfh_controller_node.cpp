@@ -901,8 +901,8 @@ void VFHController::local_planner_pub() {
         var_debug.data.push_back(speed_cmd);
         var_debug.data.push_back(goal_x);
         var_debug.data.push_back(goal_y);
-        var_debug.data.push_back(dist_from_point);
-        var_debug.data.push_back(path_point_received);
+        var_debug.data.push_back(abs(robot_pose_theta-path_direction)*180/M_PI);
+        var_debug.data.push_back(weights_inverted);
         debug_pub_.publish(var_debug);
     }
 
