@@ -22,10 +22,10 @@
 
 
 	<!-- SONAR maxbotix-->
-	<!-- <node pkg="maxbotixs_sonar" type="max_botixs1_driver_ros.py" name="maxbotix_sonar" output="screen">
+	<!-- <node pkg="maxbotixs_sonar" type="max_botixs_sonar_dx.py" name="maxbotix_sonar_dx" output="screen">
     </node>
 
-	<node pkg="maxbotixs_sonar" type="max_botixs2_driver_ros.py" name="maxbotix_sonar2" output="screen">
+	<node pkg="maxbotixs_sonar" type="max_botixs_sonar_sx.py" name="maxbotix_sonar_sx" output="screen">
     </node> -->
 
 	<include file="$(find xrot_launch)/xrot_tf.launch"/> 

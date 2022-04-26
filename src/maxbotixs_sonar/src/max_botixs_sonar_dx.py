@@ -15,10 +15,10 @@ class sonar:
         self.noValue = 0
         self.minValue = 300
         self.sonar_range = 0
-        self.ser = Serial("/dev/ttyUSB1", 9600, 8, 'N', 1, timeout=1)
+        self.ser = Serial("/dev/ttyUSB0", 9600, 8, 'N', 1, timeout=1)
 
         # publisher
-        self.pub_sonar_range = rospy.Publisher('max_botix2_range', Range, queue_size=10)
+        self.pub_sonar_range = rospy.Publisher('sonar_dx', Range, queue_size=10)
         print('max botix sonar driver initialized')
 
     def measure(self):
@@ -64,7 +64,7 @@ class sonar:
         
         ros_msg = Range()
         ros_msg.header.stamp = rospy.Time.now()
-        ros_msg.header.frame_id = 'sonar2' 
+        ros_msg.header.frame_id = 'sonar_dx' 
         ros_msg.range = self.sonar_range
         self.pub_sonar_range.publish(ros_msg)
 
@@ -78,7 +78,7 @@ class sonar:
 
         while not rospy.is_shutdown():
             self.measure()
-            print('max botix 2: ', self.sonar_range)
+            print('max botix dx: ', self.sonar_range)
             self.pub_topic()            
             rate.sleep()
 

@@ -16,6 +16,7 @@
 #include <geometry_msgs/Twist.h> 
 #include <std_msgs/Float64MultiArray.h> 
 #include <nav_msgs/Odometry.h> 
+#include <sensor_msgs/Range.h> 
 #include <radar_pa_msgs/radar_msg.h> 
 #include <eigen3/Eigen/Dense>
 
@@ -47,7 +48,8 @@ private:
     ros::Subscriber robot_pose_sub_,robot_pose_sub_2; 
     ros::Subscriber path_point_sub_; 
     ros::Subscriber trajectory_sub_; 
-    ros::Subscriber radar_points_sub_,radar_points_sub_2; 
+    ros::Subscriber radar_points_sub_,radar_points_sub_2;
+    ros::Subscriber sonar_dx_sub,sonar_sx_sub; 
     ros::Publisher  local_planner_pub_;
     ros::Publisher  cloud_pub_;
     ros::Publisher  overall_cost_pub_;
@@ -121,15 +123,29 @@ private:
     float lateral_dist_th;                  // distance threshold that toghether with 'dist_to_goal_th' determine the END of the avoidance manouver. [m]
     double path_direction;
     float goal_dist_th;
+    float prev_goal_index;
     // Transformation matrices 
     Matrix<double, 3, 3> vehicle_to_radar;  // vehicle to radar transformation matrix
     Matrix<double, 3, 3> map_to_vehicle;    // map to vehicle transformation matrix
+    Matrix<double, 3, 3> vehicle_to_sonar_dx;  // vehicle to radar transformation matrix
+    Matrix<double, 3, 3> vehicle_to_sonar_sx;  // vehicle to radar transformation matrix
     // verbose - DEBUG
     bool verbose;
     // ROS messages - DEBUG
     geometry_msgs::PoseStamped ref_dir_pose, goal_pose;
     sensor_msgs::PointCloud2 debug_map;
     pcl::PointCloud<pcl::PointXYZ> debug_cloud;
+    //ROS messages - sonar sensors
+    sensor_msgs::Range sonar_dx, sonar_sx;
+    // sonar parameters FOV
+    float sonar_hor_arc_lenght = 1;
+    float sonar_hor_res = 0.1;
+    float sonar_dx_angle = 0.1;
+    float sonar_sx_angle = -0.1;
+    vector<double> meas_raw_sonar_dx_x;
+    vector<double> meas_raw_sonar_dx_y;
+    vector<double> meas_raw_sonar_sx_x;
+    vector<double> meas_raw_sonar_sx_y;
 
     // Methods to initialize publishers and subscribers
     void initializeSubscribers(); 
@@ -141,6 +157,8 @@ private:
     void trajectoryCallback(const nav_msgs::Path& msg); 
     void radarPointsCallback(const radar_pa_msgs::radar_msg& msg); 
     void radarPointsCallback_2(const sensor_msgs::LaserScan& msg); 
+    void sonarDxCallback(const sensor_msgs::Range& msg);
+    void sonarSxCallback(const sensor_msgs::Range& msg);
 	// Methods for vector field histogram controller
     void normpdf(const std::vector<int>& sector_array, int sector_index, double gaussian_weight, std::vector<double>& norm_distribution);
     int findSectorIdx(double angle);

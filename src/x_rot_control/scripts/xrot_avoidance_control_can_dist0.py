@@ -71,6 +71,8 @@ class xrot_position_control:
         self.Closes_Obst_Orient = 0
         self.Speed_Request = 128
         self.Steering_Request = 128
+        
+        self.already_published = False
 
     def cmd_vel_cbk(self,msg):
         self.Allarm_ON = msg.linear.z
@@ -85,15 +87,15 @@ class xrot_position_control:
             self.trajectory.poses = []
             for i in range(10):
                 self.trajectory.poses.append(PoseStamped())
-                self.path_ind[i] =  False
+                self.path_ind[i] = False
             self.trajectory.header.frame_id = "chassis"
             self.trajectory.header.stamp = rospy.Time.now()
             self.send_path_request()
+            self.already_published = False
         
-        # print("received points ", self.path_ind, all(self.path_ind) )
-
-        if all(self.path_ind) :
+        if all(self.path_ind) and not self.already_published:
             self.pub_trajectory.publish(self.trajectory) 
+            self.already_published = True
 
         self.Allarm_ON_prev = self.Allarm_ON   
 

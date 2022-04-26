@@ -7,8 +7,8 @@
 /can_messages_A
 /can_messages_B
 /radar_messages
-/max_botix1_range
-/max_botix2_range
+/sonar_dx
+/sonar_sx
 /radar_pcd
 /diagnostics
 /initialpose

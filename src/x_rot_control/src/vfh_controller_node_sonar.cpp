@@ -72,6 +72,16 @@ VFHController::VFHController(ros::NodeHandle* nodehandle):nh_(*nodehandle)
     vehicle_to_radar << 1,0,0.65,
                         0,1,0,
                         0,0,1;
+    // 0 0.26 0.06 -0.1 0 0
+    //
+    
+    vehicle_to_sonar_dx<< cos(sonar_dx_angle),-sin(sonar_dx_angle),0.65,
+                        sin(sonar_dx_angle),cos(sonar_dx_angle),-0.26,
+                        0,0,1;
+
+    vehicle_to_sonar_sx<< cos(sonar_sx_angle),-sin(sonar_sx_angle),0.65,
+                        sin(sonar_sx_angle),cos(sonar_sx_angle),0.26,
+                        0,0,1;
     // Transformation matrix 'map_to_vehicle' - initialization
     map_to_vehicle = Matrix<double, 3, 3>::Identity();
     
@@ -135,6 +145,8 @@ void VFHController::initializeSubscribers()
     trajectory_sub_ = nh_.subscribe("/trajectory", 1, &VFHController::trajectoryCallback,this);  
     radar_points_sub_ = nh_.subscribe("/radar_messages", 1, &VFHController::radarPointsCallback,this);
     radar_points_sub_2 = nh_.subscribe("/radar", 1, &VFHController::radarPointsCallback_2,this);  
+    sonar_dx_sub = nh_.subscribe("/sonar_dx", 1, &VFHController::sonarDxCallback,this);  
+    sonar_sx_sub = nh_.subscribe("/sonar_sx", 1, &VFHController::sonarSxCallback,this);  
 }
 
 void VFHController::initializePublishers()
@@ -327,8 +339,66 @@ void VFHController::radarPointsCallback_2(const sensor_msgs::LaserScan& msg){ //
     }  
 }
 
+void VFHController::sonarDxCallback(const sensor_msgs::Range& msg){
+    // spacchetta i messagi del radar e trasforma i punti in X e Y
+    Matrix<double, 3, 1> temp;
+    Matrix<double, 2, 1> perp_dir, meas_pose, temp_pose;
+    // pcl::PointXYZ point;
+
+    meas_raw_sonar_dx_x.clear();
+    meas_raw_sonar_dx_y.clear();
+    
+    temp << msg.range, 0, 1;
+
+    temp = map_to_vehicle*vehicle_to_sonar_dx*temp; // xy coordinates in map frame
+    meas_raw_sonar_dx_x.push_back(temp(0));
+    meas_raw_sonar_dx_y.push_back(temp(1));
+    meas_pose << temp(0), temp(1);
+
+    perp_dir << cos(robot_pose_theta + sonar_dx_angle - M_PI/2), sin(robot_pose_theta + sonar_dx_angle - M_PI/2);
+
+    for(int L = sonar_hor_res; L< sonar_hor_arc_lenght/2; L+=sonar_hor_res){
+        temp_pose = meas_pose + perp_dir*L;
+        meas_raw_sonar_dx_x.push_back(temp_pose(0));
+        meas_raw_sonar_dx_y.push_back(temp_pose(1));
+
+        temp_pose = meas_pose - perp_dir*L;
+        meas_raw_sonar_dx_x.push_back(temp_pose(0));
+        meas_raw_sonar_dx_y.push_back(temp_pose(1));
+    }
+}
+
+void VFHController::sonarSxCallback(const sensor_msgs::Range& msg){
+    // spacchetta i messagi del radar e trasforma i punti in X e Y
+    Matrix<double, 3, 1> temp;
+    Matrix<double, 2, 1> perp_dir, meas_pose, temp_pose;
+    // pcl::PointXYZ point;
+
+    meas_raw_sonar_sx_x.clear();
+    meas_raw_sonar_sx_y.clear();
+    
+    temp << msg.range, 0, 1;
+
+    temp = map_to_vehicle*vehicle_to_sonar_sx*temp; // xy coordinates in map frame
+    meas_raw_sonar_sx_x.push_back(temp(0));
+    meas_raw_sonar_sx_y.push_back(temp(1));
+    meas_pose << temp(0), temp(1);
+
+    perp_dir << cos(robot_pose_theta + sonar_sx_angle - M_PI/2), sin(robot_pose_theta + sonar_sx_angle - M_PI/2);
+
+    for(int L = sonar_hor_res; L< sonar_hor_arc_lenght/2; L+=sonar_hor_res){
+        temp_pose = meas_pose + perp_dir*L;
+        meas_raw_sonar_sx_x.push_back(temp_pose(0));
+        meas_raw_sonar_sx_y.push_back(temp_pose(1));
+
+        temp_pose = meas_pose - perp_dir*L;
+        meas_raw_sonar_sx_x.push_back(temp_pose(0));
+        meas_raw_sonar_sx_y.push_back(temp_pose(1));
+    }
+}
+
 void VFHController::update_pers_map(){
-    // add new measurements to pers_map
+    // add radar measurements to pers_map
     for(int i=0;i<meas_raw_x.size(); i++){
 
         close_points.clear();
@@ -357,6 +427,80 @@ void VFHController::update_pers_map(){
         
         if(close_points.size()==0){
             vector<double> to_insert = {meas_raw_x[i], meas_raw_y[i], 0, 0};
+            pers_map.push_back(to_insert);
+        }
+        for (int j=0; j<close_points.size(); j++){
+            pers_map[close_points[j]][3]++; 
+        }
+        
+    }
+
+    // add sonar sx measurements to pers_map
+    for(int i=0;i<meas_raw_sonar_sx_x.size(); i++){
+
+        close_points.clear();
+        int closest_point = -1;
+        double dist;
+        double diff_x;
+        double diff_y;
+        double min_dist = 100;
+        // check existence
+        for(int ind=0; ind<pers_map.size(); ind++){
+            diff_x = pers_map[ind][0] - meas_raw_sonar_sx_x[i];
+            diff_y = pers_map[ind][1] - meas_raw_sonar_sx_y[i];
+            dist = sqrt(diff_x*diff_x + diff_y*diff_y);
+            if(dist< pers_dist_th ){
+                close_points.push_back(ind);
+                if(dist<pers_dist_th_same){
+                    closest_point = ind;
+                }
+            }
+        }
+        
+        if(closest_point!=-1){
+            vector<double> to_insert = {meas_raw_sonar_sx_x[i], meas_raw_sonar_sx_y[i], 0, pers_map[closest_point][3]};
+            pers_map[closest_point] = to_insert;
+        }
+        
+        if(close_points.size()==0){
+            vector<double> to_insert = {meas_raw_sonar_sx_x[i], meas_raw_sonar_sx_y[i], 0, 0};
+            pers_map.push_back(to_insert);
+        }
+        for (int j=0; j<close_points.size(); j++){
+            pers_map[close_points[j]][3]++; 
+        }
+        
+    }
+
+    // add sonar dx measurements to pers_map
+    for(int i=0;i<meas_raw_sonar_dx_x.size(); i++){
+
+        close_points.clear();
+        int closest_point = -1;
+        double dist;
+        double diff_x;
+        double diff_y;
+        double min_dist = 100;
+        // check existence
+        for(int ind=0; ind<pers_map.size(); ind++){
+            diff_x = pers_map[ind][0] - meas_raw_sonar_dx_x[i];
+            diff_y = pers_map[ind][1] - meas_raw_sonar_dx_y[i];
+            dist = sqrt(diff_x*diff_x + diff_y*diff_y);
+            if(dist< pers_dist_th ){
+                close_points.push_back(ind);
+                if(dist<pers_dist_th_same){
+                    closest_point = ind;
+                }
+            }
+        }
+        
+        if(closest_point!=-1){
+            vector<double> to_insert = {meas_raw_sonar_dx_x[i], meas_raw_sonar_dx_y[i], 0, pers_map[closest_point][3]};
+            pers_map[closest_point] = to_insert;
+        }
+        
+        if(close_points.size()==0){
+            vector<double> to_insert = {meas_raw_sonar_dx_x[i], meas_raw_sonar_dx_y[i], 0, 0};
             pers_map.push_back(to_insert);
         }
         for (int j=0; j<close_points.size(); j++){
@@ -910,8 +1054,8 @@ void VFHController::local_planner_pub() {
         var_debug.data.push_back(min(min(speed_cmd,speed_upper_lim-abs(angular_speed)),goal_dist_speed));
         var_debug.data.push_back(goal_x);
         var_debug.data.push_back(goal_y);
-        var_debug.data.push_back(abs(robot_pose_theta-path_direction)*180/M_PI);
-        var_debug.data.push_back(weights_inverted);
+        var_debug.data.push_back(dist_from_point);
+        var_debug.data.push_back(path_point_received);
         debug_pub_.publish(var_debug);
     }
 

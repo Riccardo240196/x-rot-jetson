@@ -17,7 +17,7 @@
 	</group>
 			
 	<!-- LiDAR -->
-	<node pkg="lslidar_c32_decoder" type="lslidar_c32_decoder_node" name="leishen_lslidar_c32_decoder" output="log">
+	<!-- <node pkg="lslidar_c32_decoder" type="lslidar_c32_decoder_node" name="leishen_lslidar_c32_decoder" output="log">
         <param name="child_frame_id" value="lidar"/>
         <param name="point_num" value="2000"/>
         <param name="channel_num" value="0"/>
@@ -29,17 +29,17 @@
         <param name="publish_point_cloud" value="true"/>
         <param name="publish_channels" value="false"/>
         <remap from="lslidar_point_cloud" to="/point_raw" />
-    </node>
+    </node> -->
 
     <!-- static TF -->
     <include file="$(find xrot_launch)/xrot_tf.launch"/> 
 
     <!-- remove ground cloud -->
-    <include file="$(find xrot_pre_proces)/launch/xrot_pre_proces.launch"/> 
+    <!-- <include file="$(find xrot_pre_proces)/launch/xrot_pre_proces.launch"/>  -->
 
     <!-- add frame to sonars-->
-    <node pkg="maxbotixs_sonar" type="max_botixs_frames.py" name="max_botixs_frames" output="log">
-    </node>
+    <!-- <node pkg="maxbotixs_sonar" type="max_botixs_frames.py" name="max_botixs_frames" output="log">
+    </node> -->
 
     <!-- RECORD -->
     <!-- <include file="$(find xrot_launch)/xrot_record_sim.launch"> 
