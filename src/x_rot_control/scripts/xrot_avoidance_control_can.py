@@ -279,7 +279,7 @@ class xrot_position_control:
         while not rospy.is_shutdown():
             rate.sleep()
             self.read_pos_from_can()
-            self.set_state()
+            #self.set_state()
             self.send_local_planner()
           
 
