@@ -693,6 +693,7 @@ void VFHController::vfhController() {
         path_point_received = false;
     }
 
+    // TODO: if path_point_received FALSE -> set stop=1 and then return
     if (!ctrl_word) 
         return;
 
