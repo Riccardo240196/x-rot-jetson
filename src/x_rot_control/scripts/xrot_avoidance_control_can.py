@@ -32,7 +32,7 @@ class xrot_position_control:
         self.state_msg = LinkState()
         self.state_msg.link_name = 'footprint'
         self.state_msg.reference_frame = 'world'
-        self.path_point_distance = 10 # [cm] IF 0 -> send 10 points (trajectory)
+        self.path_point_distance = rospy.get_param("path_point_distance") # [cm] IF 0 -> send 10 points (trajectory)
         self.Allarm_ON_prev = 0
         self.num_points = 15
         self.path_ind = self.num_points
@@ -184,6 +184,8 @@ class xrot_position_control:
                 self.state_msg.pose.orientation.z = quat[2]
                 self.state_msg.pose.orientation.w = quat[3]
 
+                self.can_odometry.header.stamp = rospy.Time.now()
+                self.can_odometry.header.frame_id = "chassis"
                 self.can_odometry.pose.pose.position.x = pos_x
                 self.can_odometry.pose.pose.position.y = pos_y
                 self.can_odometry.pose.pose.orientation.x = quat[0]
@@ -277,7 +279,7 @@ class xrot_position_control:
         while not rospy.is_shutdown():
             rate.sleep()
             self.read_pos_from_can()
-            self.set_state()
+            #self.set_state()
             self.send_local_planner()
           
 
