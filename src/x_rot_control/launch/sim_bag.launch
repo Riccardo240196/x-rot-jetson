@@ -10,6 +10,10 @@
   <!-- static TF -->
   <include file="$(find x_rot_control)/launch/xrot_tf.launch"/>
 
+  <!-- Rviz -->
+  <node pkg="rviz" type="rviz" name="rviz" args="-d $(find xrot_launch)/rviz/sensors.rviz"/>
+	
+
   <!-- environment setup -->
   <node pkg="rosbag" type="play" name="play" args="--clock -l -r 1 '$(arg bagpath)' "></node>
 

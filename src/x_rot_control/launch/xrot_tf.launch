@@ -1,6 +1,8 @@
 <launch>
   
   <!-- Lidar from Radar -->
+  <node pkg="tf" type="static_transform_publisher" name="radar_to_chassis" args="0 0 0.65 0 0 0 chassis radar 10"/>
+
   <node pkg="tf" type="static_transform_publisher" name="radar_to_lidar" args="-0.1 0 0.105 0.7 0 0 radar lidar 10"/>
   
   <!-- ZED from Radar -->

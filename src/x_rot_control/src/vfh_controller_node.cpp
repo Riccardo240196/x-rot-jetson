@@ -307,7 +307,7 @@ void VFHController::radarPointsCallback_2(const sensor_msgs::LaserScan& msg){ //
 
     double angle_min = msg.angle_min;
     double angle_increment = msg.angle_increment;
-    double angle=angle_min;
+    double angle = angle_min;
 
     for(int i = 0; i< msg.ranges.size(); i++){
         if(!isinf(msg.ranges[i])){
@@ -348,11 +348,14 @@ void VFHController::update_pers_map(){
                 }
             }
         }
-        vector<double> to_insert = {meas_raw_x[i], meas_raw_y[i], 0, 0};
-        if(closest_point!=-1)
+        
+        if(closest_point!=-1){
+            vector<double> to_insert = {meas_raw_x[i], meas_raw_y[i], 0, pers_map[closest_point][3]};
             pers_map[closest_point] = to_insert;
+        }
         
         if(close_points.size()==0){
+            vector<double> to_insert = {meas_raw_x[i], meas_raw_y[i], 0, 0};
             pers_map.push_back(to_insert);
         }
         for (int j=0; j<close_points.size(); j++){
