@@ -121,6 +121,7 @@ private:
     float lateral_dist_th;                  // distance threshold that toghether with 'dist_to_goal_th' determine the END of the avoidance manouver. [m]
     double path_direction;
     float goal_dist_th;
+    float prev_goal_index;
     // Transformation matrices 
     Matrix<double, 3, 3> vehicle_to_radar;  // vehicle to radar transformation matrix
     Matrix<double, 3, 3> map_to_vehicle;    // map to vehicle transformation matrix

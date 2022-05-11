@@ -57,6 +57,7 @@ VFHController::VFHController(ros::NodeHandle* nodehandle):nh_(*nodehandle)
     angle_to_goal_th = 15; // [m]
     lateral_dist_th = 1; // [m]
     goal_dist_th = 2.5; // [m]
+    prev_goal_index = 0;
     // verbse
     verbose = true;
      
@@ -530,7 +531,7 @@ void VFHController::update_goal_position(){
     //     std::cout << dists[i] << "\t";
     // }
 
-    closest_point_index = min_element(dists.begin(),dists.end()) - dists.begin();
+    closest_point_index = min_element(dists.begin()+prev_goal_index,dists.end()) - dists.begin();
     path_length += dists[closest_point_index];
     // std::cout << "\npath_length: " << path_length << "\n";
     // std::cout << "closest_point_index: " << closest_point_index << "\n";
@@ -576,7 +577,7 @@ void VFHController::update_goal_position(){
     // std::cout << "goal_index: " << goal_index << "\n";
     // std::cout << "goal_x: " << goal_x << "\n";
     // std::cout << "goal_y: " << goal_y << "\n";
-
+    prev_goal_index = goal_index;
     //update goal orientation
     if((goal_index-1)>=0 && (goal_index+1)<path_points.size()){
         //first ang
@@ -697,8 +698,10 @@ void VFHController::vfhController() {
     }
 
     // TODO: if path_point_received FALSE -> set stop=1 and then return
-    if (!ctrl_word) 
+    if (!path_point_received) {
+        stop=1;
         return;
+    }
 
     update_goal_position();
         
@@ -888,8 +891,10 @@ void VFHController::local_planner_pub() {
     if (speed_cmd < 0)
         speed_cmd = 0;
 
-    if (stop)
+    if (stop){
+        direction = 0;
         speed_cmd = 0;
+    }
 
     speed_cmd_prev = speed_cmd;
 
@@ -902,7 +907,7 @@ void VFHController::local_planner_pub() {
         var_debug.data.push_back(lateral_dist);
         var_debug.data.push_back(ref_direction);
         var_debug.data.push_back(direction);
-        var_debug.data.push_back(speed_cmd);
+        var_debug.data.push_back(min(min(speed_cmd,speed_upper_lim-abs(angular_speed)),goal_dist_speed));
         var_debug.data.push_back(goal_x);
         var_debug.data.push_back(goal_y);
         var_debug.data.push_back(dist_from_point);
@@ -912,7 +917,7 @@ void VFHController::local_planner_pub() {
 
     // Publish local planner message    
     geometry_msgs::Twist planner_msg;
-    planner_msg.linear.x = min(min(speed_cmd,speed_upper_lim-abs(angular_speed)),goal_dist_speed);
+    planner_msg.linear.x = speed_cmd;
     planner_msg.linear.z = ctrl_word;
     planner_msg.angular.z = angular_speed;
     local_planner_pub_.publish(planner_msg);
