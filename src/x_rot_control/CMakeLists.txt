@@ -150,6 +150,11 @@ add_executable(vfh_controller_node src/vfh_controller_node.cpp)
 target_link_libraries(vfh_controller_node ${catkin_LIBRARIES})
 add_dependencies(vfh_controller_node ${PROJECT_NAME}_gencfg)
 
+add_executable(vfh_controller_node_sonar src/vfh_controller_node_sonar.cpp)
+# add_dependencies(vfh_controller_node radar_pa_msgs)
+target_link_libraries(vfh_controller_node_sonar ${catkin_LIBRARIES})
+add_dependencies(vfh_controller_node_sonar ${PROJECT_NAME}_gencfg)
+
 
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
