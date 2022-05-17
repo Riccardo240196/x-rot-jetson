@@ -357,7 +357,7 @@ void VFHController::sonarDxCallback(const sensor_msgs::Range& msg){
 
     perp_dir << cos(robot_pose_theta + sonar_dx_angle - M_PI/2), sin(robot_pose_theta + sonar_dx_angle - M_PI/2);
 
-    for(int L = sonar_hor_res; L< sonar_hor_arc_lenght/2; L+=sonar_hor_res){
+    for(float L = sonar_hor_res; L< (sonar_hor_arc_lenght/2); L+=sonar_hor_res){
         temp_pose = meas_pose + perp_dir*L;
         meas_raw_sonar_dx_x.push_back(temp_pose(0));
         meas_raw_sonar_dx_y.push_back(temp_pose(1));
@@ -366,6 +366,7 @@ void VFHController::sonarDxCallback(const sensor_msgs::Range& msg){
         meas_raw_sonar_dx_x.push_back(temp_pose(0));
         meas_raw_sonar_dx_y.push_back(temp_pose(1));
     }
+    // cout << "sonar dx size " << meas_raw_sonar_dx_x.size() << endl;
 }
 
 void VFHController::sonarSxCallback(const sensor_msgs::Range& msg){
@@ -386,7 +387,7 @@ void VFHController::sonarSxCallback(const sensor_msgs::Range& msg){
 
     perp_dir << cos(robot_pose_theta + sonar_sx_angle - M_PI/2), sin(robot_pose_theta + sonar_sx_angle - M_PI/2);
 
-    for(int L = sonar_hor_res; L< sonar_hor_arc_lenght/2; L+=sonar_hor_res){
+    for(float L = sonar_hor_res; L< (sonar_hor_arc_lenght/2); L+=sonar_hor_res){
         temp_pose = meas_pose + perp_dir*L;
         meas_raw_sonar_sx_x.push_back(temp_pose(0));
         meas_raw_sonar_sx_y.push_back(temp_pose(1));
@@ -395,6 +396,7 @@ void VFHController::sonarSxCallback(const sensor_msgs::Range& msg){
         meas_raw_sonar_sx_x.push_back(temp_pose(0));
         meas_raw_sonar_sx_y.push_back(temp_pose(1));
     }
+    // cout << "sonar sx size " << meas_raw_sonar_sx_x.size() << endl;
 }
 
 void VFHController::update_pers_map(){
@@ -434,6 +436,7 @@ void VFHController::update_pers_map(){
         }
         
     }
+    // cout << "pers map size 1: " << pers_map.size() << endl;
 
     // add sonar sx measurements to pers_map
     for(int i=0;i<meas_raw_sonar_sx_x.size(); i++){
@@ -472,6 +475,7 @@ void VFHController::update_pers_map(){
         
     }
 
+    // cout << "pers map size 2: " << pers_map.size() << endl;
     // add sonar dx measurements to pers_map
     for(int i=0;i<meas_raw_sonar_dx_x.size(); i++){
 
@@ -509,6 +513,7 @@ void VFHController::update_pers_map(){
         
     }
 
+    // cout << "pers map size 3: " << pers_map.size() << endl;
     meas_x_filtered.clear();
     meas_y_filtered.clear();
     

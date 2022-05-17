@@ -20,13 +20,17 @@
 	<node pkg="radar_pa" type="radar_pa_node.py" name="radar_pa_node" output="log" respawn="true" ></node>
 	<node name="radar2pcd_pa_node" pkg="radar_pa" type="radar2pcd_pa_node.py" output="log" respawn="true"/>
 
+	<!-- CAMERA -->
+	<!-- <node pkg="usb_cam" type="usb_cam_node" name="usb_cam" output="log" respawn="true" ></node> -->
+	  
+
 
 	<!-- SONAR maxbotix-->
-	<!-- <node pkg="maxbotixs_sonar" type="max_botixs_sonar_dx.py" name="maxbotix_sonar_dx" output="screen">
+	<node pkg="maxbotixs_sonar" type="max_botixs_sonar_dx.py" name="maxbotix_sonar_dx" output="screen">
     </node>
 
 	<node pkg="maxbotixs_sonar" type="max_botixs_sonar_sx.py" name="maxbotix_sonar_sx" output="screen">
-    </node> -->
+    </node>
 
 	<include file="$(find xrot_launch)/xrot_tf.launch"/> 
 

@@ -17,7 +17,7 @@ VFHController::VFHController(ros::NodeHandle* nodehandle):nh_(*nodehandle)
     pers_time_th = 5;
     pers_dist_th = 0.5;
     pers_dist_th_same = 0.1;
-    consensus_th = 1;
+    consensus_th = 10;
     // local planner parameters - main
     ref_direction = -1;
     lateral_dist = -1;
@@ -25,7 +25,7 @@ VFHController::VFHController(ros::NodeHandle* nodehandle):nh_(*nodehandle)
     path_point_received = false;
     ctrl_word = 0; 
     stop = 0;
-    max_detection_dist = 6;
+    max_detection_dist = 4;
     max_angle_dist = 20;
     stop_distance = 2;
     min_dist = 100;
@@ -35,7 +35,7 @@ VFHController::VFHController(ros::NodeHandle* nodehandle):nh_(*nodehandle)
     direction_gain = 0.9;
     direction_speed_lim = 10;
     // local planner parameters - linear speed
-    speed_upper_lim = 0.5;
+    speed_upper_lim = 0.6;
 	speed_cmd = 0;
     speed_cmd_prev = 0;
     linear_accel_lim = 1;
@@ -270,6 +270,7 @@ void VFHController::trajectoryCallback(const nav_msgs::Path& msg) {
     
     // goal_x = path_point_x;
     // goal_y = path_point_y;
+    std::cout << "PATH POINT RECEIVED \n\n";
 
     path_point_received = true;
 
@@ -640,7 +641,7 @@ void VFHController::vfhController() {
     }
 
     // Invert directions weights
-    if (lateral_dist > weight_inversion_lat_dist && !weights_inverted) {
+    if (lateral_dist > weight_inversion_lat_dist && lateral_dist < (weight_inversion_lat_dist + 2) && !weights_inverted) {
         double temp = target_dir_weight;
         target_dir_weight = prev_dir_weight;
         prev_dir_weight = temp;
@@ -777,7 +778,8 @@ void VFHController::vfhController() {
     std::vector<int> vec;
     std::vector<int> bounds;
     float bound_ang = 40; // deg
-    int boundaries[2] = {int(bound_ang/sector_width), num_of_sector - int(bound_ang/sector_width)};    
+    boundaries[0] = int(bound_ang/sector_width);
+    boundaries[1] = num_of_sector - int(bound_ang/sector_width);
     
     if (ctrl_word && min_dist<max_detection_dist) {
 
@@ -907,11 +909,13 @@ void VFHController::local_planner_pub() {
         var_debug.data.push_back(lateral_dist);
         var_debug.data.push_back(ref_direction);
         var_debug.data.push_back(direction);
-        var_debug.data.push_back(speed_cmd));
+        var_debug.data.push_back(speed_cmd);
         var_debug.data.push_back(goal_x);
         var_debug.data.push_back(goal_y);
         var_debug.data.push_back(abs(robot_pose_theta-path_direction)*180/M_PI);
         var_debug.data.push_back(path_point_received);
+        var_debug.data.push_back(boundaries[0]);
+        var_debug.data.push_back(boundaries[1]);
         debug_pub_.publish(var_debug);
     }
 

@@ -91,10 +91,13 @@ class xrot_position_control:
             self.trajectory.header.frame_id = "chassis"
             self.trajectory.header.stamp = rospy.Time.now()
             self.send_path_request()
+            print('\n\n\n SEND PATH REQ \n\n\n')
             self.already_published = False
         
+        print('\n\n\n', self.path_ind, '\n\n\n')
         if all(self.path_ind) and not self.already_published:
             self.pub_trajectory.publish(self.trajectory) 
+            print('\n\n\n PUBLISHED TRAJ \n\n\n')
             self.already_published = True
 
         self.Allarm_ON_prev = self.Allarm_ON   
@@ -136,6 +139,7 @@ class xrot_position_control:
     def read_pos_from_can(self):
         # self.bus.reset()
         msg = self.bus.recv(0.1)
+        # print('\n\n\n',msg.arbitration_id,'\n\n\n')
 
         try:
             # vehicle pose
@@ -788,7 +792,7 @@ class xrot_position_control:
         while not rospy.is_shutdown():
             rate.sleep()
             self.read_pos_from_can()
-            self.set_state()
+            # self.set_state()
             self.send_local_planner()
           
 

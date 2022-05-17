@@ -146,6 +146,7 @@ private:
     vector<double> meas_raw_sonar_dx_y;
     vector<double> meas_raw_sonar_sx_x;
     vector<double> meas_raw_sonar_sx_y;
+    int boundaries[2];
 
     // Methods to initialize publishers and subscribers
     void initializeSubscribers(); 

@@ -53,7 +53,10 @@ class sonar:
                     readIndex += 1
                 # print('after reindex ', rospy.Time.now().to_sec())
                 readSlice = readBytes[readIndex:readEnd]
-                result = int (readSlice)
+                try:
+                    result = int (readSlice) 
+                except:
+                    result = 10000
                 break
         # print('max botix sonar driver measure done')
 
@@ -65,7 +68,7 @@ class sonar:
         ros_msg = Range()
         ros_msg.header.stamp = rospy.Time.now()
         ros_msg.header.frame_id = 'sonar_dx' 
-        ros_msg.range = self.sonar_range
+        ros_msg.range = self.sonar_range/1000
         self.pub_sonar_range.publish(ros_msg)
 
         # print('max botix sonar driver topic published')
