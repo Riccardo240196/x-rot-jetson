@@ -36,6 +36,7 @@ class xrot_position_control:
         self.Allarm_ON_prev = 0
         self.num_points = 15
         self.path_ind = [False]*10
+        self.pose_present = False
         
         self.bus = can.interface.Bus(bustype='socketcan', channel='can0', bitrate=250000)
         # self.bus = can.interface.Bus(bustype='pcan', channel='PCAN_USBBUS1', bitrate=250000)
@@ -50,6 +51,7 @@ class xrot_position_control:
         self.path_point = Odometry()
         self.pub_trajectory = rospy.Publisher('trajectory', Path, queue_size=1)
         self.trajectory = Path()
+        self.pub_trajectory_db = rospy.Publisher('trajectory_debug', Path, queue_size=1)
         self.pub_speed_request = rospy.Publisher('speed_request', Twist, queue_size=1)
         self.speed_request = Twist()
 
@@ -94,7 +96,7 @@ class xrot_position_control:
             print('\n\n\n SEND PATH REQ \n\n\n')
             self.already_published = False
         
-        print('\n\n\n', self.path_ind, '\n\n\n')
+        # print('\n\n\n', self.path_ind, '\n\n\n')
         if all(self.path_ind) and not self.already_published:
             self.pub_trajectory.publish(self.trajectory) 
             print('\n\n\n PUBLISHED TRAJ \n\n\n')
@@ -207,7 +209,9 @@ class xrot_position_control:
                 self.can_odometry.pose.pose.orientation.z = quat[2]
                 self.can_odometry.pose.pose.orientation.w = quat[3]
 
-                self.pub_can_odometry.publish(self.can_odometry)
+                self.pose_present = True
+
+                # self.pub_can_odometry.publish(self.can_odometry)
 
             # trajectory
             if msg.arbitration_id == 0x190:
@@ -794,6 +798,10 @@ class xrot_position_control:
             self.read_pos_from_can()
             # self.set_state()
             self.send_local_planner()
+            if(self.pose_present):
+                self.pub_can_odometry.publish(self.can_odometry)
+            if all(self.path_ind):
+                self.pub_trajectory_db.publish(self.trajectory)
           
 
         self.bus.shutdown()

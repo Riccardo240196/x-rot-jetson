@@ -81,7 +81,7 @@ class sonar:
 
         while not rospy.is_shutdown():
             self.measure()
-            print('max botix dx: ', self.sonar_range)
+            # print('max botix dx: ', self.sonar_range)
             self.pub_topic()            
             rate.sleep()
 

@@ -25,14 +25,15 @@ VFHController::VFHController(ros::NodeHandle* nodehandle):nh_(*nodehandle)
     path_point_received = false;
     ctrl_word = 0; 
     stop = 0;
-    max_detection_dist = 4;
+    max_detection_dist = 3;
     max_angle_dist = 20;
     stop_distance = 2;
     min_dist = 100;
     // local planner parameters - direction
 	direction = 0;
     prev_direction = 0;
-    direction_gain = 0.9;
+    direction_gain_in = 0.4;
+    direction_gain_out = 0.7;
     direction_speed_lim = 10;
     // local planner parameters - linear speed
     speed_upper_lim = 0.6;
@@ -54,7 +55,7 @@ VFHController::VFHController(ros::NodeHandle* nodehandle):nh_(*nodehandle)
     // local planner parameters - goal point
     goal_x = 0.0;
     goal_y = 0.0;
-    angle_to_goal_th = 15; // [m]
+    angle_to_goal_th = 25; // [m]
     lateral_dist_th = 1; // [m]
     goal_dist_th = 2.5; // [m]
     prev_goal_index = 0;
@@ -109,7 +110,8 @@ void VFHController::reconfigureCallback(x_rot_control::x_rot_controlConfig &conf
     linear_accel_lim = config.linear_accel_lim;
     // angular speed cmd parameters
     direction_speed_lim = config.direction_speed_lim;
-    direction_gain = config.direction_gain;
+    direction_gain_in = config.direction_gain_in;
+    direction_gain_out = config.direction_gain_out;
     // verbose
     verbose = config.verbose;
     
@@ -221,30 +223,6 @@ void VFHController::robotPoseCallback_2(const nav_msgs::Odometry& msg) {
     map_to_vehicle << cos(yaw), -sin(yaw), robot_pose_x,
                       sin(yaw), cos(yaw), robot_pose_y,
                       0, 0, 1;
-
-    // Calculate reference direction, lateral distance from path and distance from goal point
-    if (path_point_received) {
-        double delta_x = goal_x - robot_pose_x;
-        double delta_y = goal_y - robot_pose_y;
-        ref_direction = 180/M_PI*(atan2(delta_y,delta_x) - robot_pose_theta);
-
-        dist_from_point = sqrt(pow(delta_x,2) + pow(delta_y,2));
-        // double ang = atan2(delta_y,delta_x);
-        // lateral_dist = abs(dist_from_point*cos(ang));
-
-        double a = -tan(path_direction);
-        double c = -a*goal_x - goal_y;
-        lateral_dist = abs(robot_pose_x*a + robot_pose_y + c)/sqrt(a*a+1);
-
-        if (ref_direction<0)
-            ref_direction = 360 + ref_direction;      
-    }
-    else {
-        ref_direction = 0;
-        lateral_dist = -1;
-        dist_from_point = -1;
-    }
-
     
 }
 
@@ -610,6 +588,28 @@ void VFHController::update_goal_position(){
     }
     // std::cout << "path_direction: " << path_direction << "\n";
     // std::cout << "robot_pose_theta: " << robot_pose_theta << "\n";
+    // Calculate reference direction, lateral distance from path and distance from goal point
+    if (path_point_received) {
+        double delta_x = goal_x - robot_pose_x;
+        double delta_y = goal_y - robot_pose_y;
+        ref_direction = 180/M_PI*(atan2(delta_y,delta_x) - robot_pose_theta);
+
+        dist_from_point = sqrt(pow(delta_x,2) + pow(delta_y,2));
+        // double ang = atan2(delta_y,delta_x);
+        // lateral_dist = abs(dist_from_point*cos(ang));
+
+        double a = -tan(path_direction);
+        double c = -a*goal_x - goal_y;
+        lateral_dist = abs(robot_pose_x*a + robot_pose_y + c)/sqrt(a*a+1);
+
+        if (ref_direction<0)
+            ref_direction = 360 + ref_direction;      
+    }
+    else {
+        ref_direction = 0;
+        lateral_dist = -1;
+        dist_from_point = -1;
+    }
     
 }
 
@@ -735,8 +735,8 @@ void VFHController::vfhController() {
     // Gaussian properties
     double coeff[4] = {0.845015753269096,4.96041666063205,-0.188303172580222,-4.44023451783892};
     double gaussian_shift = round((float)num_of_sector/2);
-    double gaussian_weight_target = findGaussianWeight(coeff);
-    double gaussian_weight_prev_dir = findGaussianWeight(coeff);
+    double gaussian_weight_target = findGaussianWeight(coeff)*1.5;
+    double gaussian_weight_prev_dir = findGaussianWeight(coeff)/1.5;
     double coeff2[4] = {0.369389785763626,3.64914690021850,-0.216102762982391,-3.84497580829445};
     
     // build target direction cost
@@ -777,30 +777,30 @@ void VFHController::vfhController() {
     // get min cost and direction
     std::vector<int> vec;
     std::vector<int> bounds;
-    float bound_ang = 40; // deg
+    float bound_ang = 90; // deg
     boundaries[0] = int(bound_ang/sector_width);
     boundaries[1] = num_of_sector - int(bound_ang/sector_width);
     
     if (ctrl_word && min_dist<max_detection_dist) {
 
-        for (int i=1; i<num_of_sector; i++) {
-            if (abs(overall_cost[i] - overall_cost[i-1])>1e-4)
-                vec.push_back(i-1);
-        }
+        // for (int i=1; i<num_of_sector; i++) {
+        //     if (abs(overall_cost[i] - overall_cost[i-1])>1e-4)
+        //         vec.push_back(i-1);
+        // }
         
-        for (int i=0; i<vec.size()-1; i++) {
-            if (abs(vec[i+1]-vec[i]) > 1) {
-                bounds.push_back(vec[i]);
-                bounds.push_back(vec[i+1]);
-            }
-        }
+        // for (int i=0; i<vec.size()-1; i++) {
+        //     if (abs(vec[i+1]-vec[i]) > 1) {
+        //         bounds.push_back(vec[i]);
+        //         bounds.push_back(vec[i+1]);
+        //     }
+        // }
     
-        int bound_1 = search_closest(bounds,boundaries[0]);
-        int bound_2 = search_closest(bounds,boundaries[1]);
-        if (bound_1 < boundaries[0] && bound_1!=0) 
-            boundaries[0] = bound_1;
-        if (bound_2 > boundaries[1] && bound_2!=num_of_sector)
-            boundaries[1] = bound_2;
+        // int bound_1 = search_closest(bounds,boundaries[0]);
+        // int bound_2 = search_closest(bounds,boundaries[1]);
+        // if (bound_1 < boundaries[0] && bound_1!=0) 
+        //     boundaries[0] = bound_1;
+        // if (bound_2 > boundaries[1] && bound_2!=num_of_sector)
+        //     boundaries[1] = bound_2;
     }
 
     for (int i=1; i<num_of_sector; i++) {
@@ -870,7 +870,10 @@ void VFHController::local_planner_pub() {
     }
     
     // evaluate speed cmd
-    double angular_speed = direction_gain*direction*M_PI/180.0;
+    double angular_speed = direction_gain_out*direction*M_PI/180.0;
+    if(weights_inverted)
+        angular_speed = direction_gain_in*direction*M_PI/180.0;
+
     if (abs(angular_speed) > speed_upper_lim/2) 
         angular_speed = angular_speed/abs(angular_speed)*speed_upper_lim/2; 
 

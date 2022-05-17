@@ -32,7 +32,8 @@ VFHController::VFHController(ros::NodeHandle* nodehandle):nh_(*nodehandle)
     // local planner parameters - direction
 	direction = 0;
     prev_direction = 0;
-    direction_gain = 0.9;
+    direction_gain_in = 0.9;
+    direction_gain_out = 0.9;
     direction_speed_lim = 10;
     // local planner parameters - linear speed
     speed_upper_lim = 0.5;
@@ -119,7 +120,8 @@ void VFHController::reconfigureCallback(x_rot_control::x_rot_controlConfig &conf
     linear_accel_lim = config.linear_accel_lim;
     // angular speed cmd parameters
     direction_speed_lim = config.direction_speed_lim;
-    direction_gain = config.direction_gain;
+    direction_gain_in = config.direction_gain_in;
+    direction_gain_out = config.direction_gain_out;
     // verbose
     verbose = config.verbose;
     
@@ -1017,7 +1019,9 @@ void VFHController::local_planner_pub() {
     }
     
     // evaluate speed cmd
-    double angular_speed = direction_gain*direction*M_PI/180.0;
+    double angular_speed = direction_gain_out*direction*M_PI/180.0;
+    if(weights_inverted)
+        angular_speed = direction_gain_in*direction*M_PI/180.0;
     if (abs(angular_speed) > speed_upper_lim/2) 
         angular_speed = angular_speed/abs(angular_speed)*speed_upper_lim/2; 
 

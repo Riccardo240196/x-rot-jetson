@@ -25,12 +25,12 @@
 	  
 
 
-	<!-- SONAR maxbotix-->
+	<!-- SONAR maxbotix -->
 	<node pkg="maxbotixs_sonar" type="max_botixs_sonar_dx.py" name="maxbotix_sonar_dx" output="screen">
     </node>
 
 	<node pkg="maxbotixs_sonar" type="max_botixs_sonar_sx.py" name="maxbotix_sonar_sx" output="screen">
-    </node>
+    </node> 
 
 	<include file="$(find xrot_launch)/xrot_tf.launch"/> 
 

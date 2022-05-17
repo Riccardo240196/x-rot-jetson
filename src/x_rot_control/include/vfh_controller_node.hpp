@@ -94,7 +94,8 @@ private:
 	// local planner parameters - direction
     double direction;                       // direction chosen [deg]. When local planner has not control of the robot its value is 0.
     double prev_direction;                  // previous direction [deg]
-    double direction_gain;                  // gain of the proportional controller used to steer the robot.
+    double direction_gain_in;                  // gain of the proportional controller used to steer the robot in.
+    double direction_gain_out;                  // gain of the proportional controller used to steer the robot out.
     double direction_speed_lim;             // limit of the possible robot turning speed [deg/s]
 	// local planner parameters - linear speed
     float speed_upper_lim;                  // linear speed upper limit [m/s]

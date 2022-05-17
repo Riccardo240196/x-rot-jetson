@@ -3,7 +3,7 @@
 	<arg name="stop_mode" default="false"/>
 	<arg name="point_distance" default="0"/>
  
-	<node pkg="x_rot_control" type="vfh_controller_node_sonar" name="vfh_controller" output="screen" respawn="true">
+	<node pkg="x_rot_control" type="vfh_controller_node" name="vfh_controller" output="screen" respawn="true">
 		<param name="stop_mode_1" type="boolean" value="false" />
 		<param name="stop_mode_2" type="boolean" value="$(arg stop_mode)" />
 	</node>
@@ -13,6 +13,7 @@
 	<node pkg="x_rot_control" type="xrot_avoidance_control_can_dist0.py" name="xrot_avoidance_control_can" output="screen" respawn="true"></node>
 	
 	<!-- RECORD -->
-	<node pkg="rosbag" type="record" name="rosbag_recorder" args="-o /media/ubuntu/data2/ -a" output="screen"/>  
+	<include file="$(find xrot_launch)/xrot_record.launch"/> 
+	<!-- <node pkg="rosbag" type="record" name="rosbag_recorder" args="-o /media/ubuntu/data2/ -a" output="screen"/>   -->
 
 </launch>
