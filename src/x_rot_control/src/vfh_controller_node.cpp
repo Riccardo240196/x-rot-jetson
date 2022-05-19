@@ -684,6 +684,8 @@ void VFHController::vfhController() {
     }  
 
     // set STOP and CTRL_WORD var
+    // TODO: Think of this first condition: inside a vineyard can become true even if we decrease the FOV 
+    // to take control to 5 deg since stop_distance is evaluated always considering the overall 45 deg of FOV
     if ((!stop && min_stop_dist < stop_distance)||
         (stop && min_stop_dist < (stop_distance+0.1))||
         (ref_direction>90 && ref_direction<270)){
