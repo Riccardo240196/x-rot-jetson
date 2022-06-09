@@ -85,6 +85,7 @@ private:
     float lateral_dist_sign;                // lateral distance sign [-]. When local planner has not control of the robot its value is 0.
     double dist_from_point;                 // euclidean distance from GOAL [m]. When local planner has not control of the robot its value is -1.
     bool path_point_received;               // TRUE when GOAL is received from CAN. FALSE when the GOAL is reached.
+    bool target_goal_exist;
     bool path_point_requested;              // TRUE when GOAL is requested to gloabl panner, FALSE otherwise.
     bool ctrl_word;                         // TRUE when the measured distance is below 'max_detection_dist' or path_point_received is TRUE. FALSE when the GOAL is reached.
     bool alarm_on;                          // TRUE when the measured distance is below 'max_detection_dist'. FALSE when the GOAL is reached.
@@ -95,6 +96,7 @@ private:
     float stop_distance;                    // minimum distance to stop the vehicle (defined in vehicle frame) [m]
     double min_dist;                        // minimum measured distance (defined in vehicle frame) [m]
     double min_dist_allFOV;
+    double angle_diff_from_path;
 	// local planner parameters - direction
     double direction;                       // direction chosen [deg]. When local planner has not control of the robot its value is 0.
     double prev_direction;                  // previous direction [deg]

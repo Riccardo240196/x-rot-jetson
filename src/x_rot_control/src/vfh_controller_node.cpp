@@ -25,6 +25,7 @@ VFHController::VFHController(ros::NodeHandle* nodehandle):nh_(*nodehandle)
     private_nh.param<double>("speed_gain_multi", speed_gain_multi, 0.03);
     private_nh.param<double>("speed_gain_offset", speed_gain_offset, 0.2);
     private_nh.param<float>("max_detection_dist", max_detection_dist, 4);
+    private_nh.param<float>("stop_distance", stop_distance, 1.3);
 
     // FOR DETAILS OF THE DEFINITION OF EACH PARAMETER SEE 'vfh_controller_node.hpp'
     node_frequency = 10;
@@ -39,13 +40,15 @@ VFHController::VFHController(ros::NodeHandle* nodehandle):nh_(*nodehandle)
     lateral_dist = -1;
     dist_from_point = -1;
     path_point_received = false;
+    target_goal_exist = false;
     path_point_requested = false;
     ctrl_word = 0; 
     alarm_on = 0;
     stop = 0;
+    angle_diff_from_path = 0.0;
     // max_detection_dist = 4;
     max_angle_dist = 20;
-    stop_distance = 1;
+    stop_distance = 1.3;
     min_dist = 100;
     // local planner parameters - direction
 	direction = 0;
@@ -81,7 +84,7 @@ VFHController::VFHController(ros::NodeHandle* nodehandle):nh_(*nodehandle)
     goal_y = 0.0;
     angle_to_goal_th = 25; // [m]
     lateral_dist_th = 1; // [m]
-    goal_dist_th = 2.5; // [m]
+    goal_dist_th = 3; // [m]
     prev_goal_index = 0;
     dist_traj_end = 15; // [m]
     // verbse
@@ -588,6 +591,8 @@ void VFHController::update_goal_position(){
             goal_index = i;
             goal_x = path_points[goal_index][0];
             goal_y = path_points[goal_index][1];
+
+            target_goal_exist = true;
             break;
         }
 
@@ -643,6 +648,7 @@ void VFHController::vfhController() {
         dist_from_point = -1;
         lateral_dist = -1;
         path_point_received = false;
+        target_goal_exist = false;
         ctrl_word = 0;
         cout<<"x_rot_vfh_controller :: exit for conditions at line 611"<<endl;
         speed_cmd = 0;
@@ -660,6 +666,7 @@ void VFHController::vfhController() {
     min_dist = 100;
     min_dist_allFOV = 100;    
 
+    // processing of radar filtered data
     for (int i=0; i<data_length; i++) {
 
         double eucl_dist = sqrt(pow(meas_x_filtered[i],2) + pow(meas_y_filtered[i],2));
@@ -689,39 +696,35 @@ void VFHController::vfhController() {
         }
     }  
 
-    // set STOP and CTRL_WORD var
-    if ((!stop && min_dist < stop_distance)){
-        stop = 1;
-        alarm_on = 1;
-        ctrl_word = 1;
-    } else if (min_dist < max_detection_dist || path_point_received) {
-        stop = 0;
-        alarm_on = 1;
-        ctrl_word = 1;
-    } else {
-        stop = 0;
-        alarm_on = 0;
-        ctrl_word = 0;
-        cout<<"x_rot_vfh_controller :: exit because min dist is "<<min_dist <<" and path point received is "<<path_point_received<<endl;
-        path_point_received = false;
-    }
-
-    if (path_point_received && min_dist < max_detection_dist && !path_point_requested) {
-        stop = 0;
+    // Local planner take control conditions
+    if(!ctrl_word && min_dist <= (max_detection_dist-0.05)){
         alarm_on = 1;
         ctrl_word = 1;
         path_point_requested = true;
-    } 
-    if (min_dist >= max_detection_dist) {
+    }
+
+    if(min_dist >= (max_detection_dist+0.05)){
         alarm_on = 0;
         path_point_requested = false;
     }
 
-    if (!path_point_received) {
-        stop=1;
-        return;
+    // Request new path points while in control
+    if(ctrl_word && min_dist < max_detection_dist && !path_point_requested){
+        alarm_on = 1;
+        ctrl_word = 1;
+        path_point_requested = true;
+        path_point_received = false;
     }
 
+    // Stop conditions
+    if(!stop && (min_dist < stop_distance || (!target_goal_exist))){ //path_point_received && path_point_requested
+        stop = 1;
+        speed_cmd = 0;
+        direction = 0;
+    }
+    else if(min_dist > stop_distance+0.1)
+        stop = 0;
+      
     update_goal_position();
         
     // define sector limits 
@@ -774,14 +777,14 @@ void VFHController::vfhController() {
     int window_idx = 0;
 
     
-    window_size_param = window_size_param_max;
+    // window_size_param = window_size_param_max;
 
-    // window_size_param = window_size_param_max+3 - min_dist_allFOV*window_size_param_max/max_detection_dist;
-    // if(min_dist_allFOV < 1)
-    //     window_size_param = window_size_param_max;
+    window_size_param = window_size_param_max+3 - min_dist*window_size_param_max/max_detection_dist;
+    if(min_dist_allFOV < 1)
+        window_size_param = window_size_param_max;
     
-    // if(min_dist_allFOV >= max_detection_dist)
-    //     window_size_param = 3;
+    if(min_dist_allFOV >= max_detection_dist)
+        window_size_param = 3;
 
     // cout<<window_size_param<<endl;
 
@@ -802,7 +805,7 @@ void VFHController::vfhController() {
         for (int i = ind-(window_size/2); i < ind + (window_size/2)+1; i++) {
             if (i<0) window_idx = dist_to_associate.size()+i;
             else window_idx = (i % dist_to_associate.size());
-            cost_obstacle[k] += (1/(sqrt(dist_to_associate[window_idx])));
+            cost_obstacle[k] += (1/(dist_to_associate[window_idx]));
         }
         cost_obstacle[k] = cost_obstacle[k] / window_size;    
         overall_cost[k] = obstacle_weight * cost_obstacle[k] + (target_dir_weight) * cost_target[k] + prev_dir_weight * cost_prev[k];   
@@ -841,7 +844,7 @@ void VFHController::vfhController() {
         }
         
         for (int i=0; i<vec.size()-1; i++) {
-            if (abs(vec[i+1]-vec[i]) > 1) {
+            if (abs(vec[i+1]-vec[i]) >= 1) {
                 bounds.push_back(vec[i]);
                 bounds.push_back(vec[i+1]);
             }
@@ -959,12 +962,16 @@ void VFHController::local_planner_pub() {
     if (speed_cmd < 0)
         speed_cmd = 0;
 
-    if (stop && !path_point_received){
-        direction = 0;
-        angular_speed = direction_gain*direction*M_PI/180.0;
-        speed_cmd = 0.5;
-    }
-    else if (stop && path_point_received){
+    // if (stop && !path_point_received){
+    //     direction = 0;
+    //     angular_speed = direction_gain*direction*M_PI/180.0;
+    //     speed_cmd = 0.5;
+    // }
+    // else if (stop && path_point_received){
+    //     direction = 0;
+    //     speed_cmd = 0;
+    // }
+    if (stop){
         direction = 0;
         speed_cmd = 0;
     }
@@ -983,7 +990,7 @@ void VFHController::local_planner_pub() {
         var_debug.data.push_back(speed_cmd);
         var_debug.data.push_back(goal_x);
         var_debug.data.push_back(goal_y);
-        var_debug.data.push_back(abs(robot_pose_theta-path_direction)*180/M_PI);
+        var_debug.data.push_back(angle_diff_from_path);
         var_debug.data.push_back(path_point_received);
         var_debug.data.push_back(boundaries[0]);
         var_debug.data.push_back(boundaries[1]);
@@ -991,7 +998,7 @@ void VFHController::local_planner_pub() {
         var_debug.data.push_back(direction_gain);
         var_debug.data.push_back(speed_gain);
         var_debug.data.push_back(prev_direction);
-        var_debug.data.push_back(min_dist_allFOV);
+        var_debug.data.push_back(target_goal_exist);
         var_debug.data.push_back(target_dir_weight);
         debug_pub_.publish(var_debug);
     }
@@ -1030,6 +1037,7 @@ int main(int argc, char** argv)
 
     return 0;
 } 
+
 
 
 

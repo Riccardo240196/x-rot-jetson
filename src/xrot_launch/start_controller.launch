@@ -7,21 +7,44 @@
 		<param name="stop_mode_1" type="boolean" value="false" />
 		<param name="stop_mode_2" type="boolean" value="$(arg stop_mode)" />
 		
-		<param name="speed_upper_lim" value="0.5" />
-	    <param name="window_size_param_max" value="5"/>
-	    <param name="num_of_sector" value="180"/>
-	    <param name="k_ref_dir" value="2"/>
-	    <param name="prev_dir_weight" value="0.08"/>
-	    <param name="target_dir_weight_initial" value="0.3"/>
-	    <param name="obstacle_weight" value="0.75"/>
-	    <param name="inflation_radius" value="0.6"/>
-	    <param name="direction_speed_lim" value="30"/>
-	    <param name="direction_gain_multi" value="0.1"/>
-	    <param name="direction_gain_offset" value="0.3"/>
-	    <param name="speed_gain_multi" value="0.1"/>
-	    <param name="speed_gain_offset" value="0.2"/>
-	    <param name="max_detection_dist" value="3"/>
-	    <param name="bound_ang" value="90"/>
+		<!-- configuration with high weight on target dir -->
+
+    <param name="speed_upper_lim" value="0.5" />
+    <param name="window_size_param_max" value="30"/>
+    <param name="num_of_sector" value="180"/>
+    <param name="k_ref_dir" value="1"/>
+    <param name="prev_dir_weight" value="0.05"/>
+    <param name="target_dir_weight_initial" value="0.3"/>
+    <param name="obstacle_weight" value="0.75"/>
+    <param name="inflation_radius" value="0.6"/>
+    <param name="direction_speed_lim" value="45"/>
+    <param name="direction_gain_multi" value="0.1"/>
+    <param name="direction_gain_offset" value="0.3"/>
+    <param name="speed_gain_multi" value="0.05"/>
+    <param name="speed_gain_offset" value="0.2"/>
+    <param name="max_detection_dist" value="3"/>
+    <param name="stop_distance" value="1.0"/>
+    <param name="bound_ang" value="45"/>  
+ 
+
+  <!-- configuration with high weight on obstacles -->
+
+    <!-- <param name="speed_upper_lim" value="0.6" />
+    <param name="window_size_param_max" value="40"/>
+    <param name="num_of_sector" value="180"/>
+    <param name="k_ref_dir" value="0.001"/>
+    <param name="prev_dir_weight" value="0.08"/>
+    <param name="target_dir_weight_initial" value="0.2"/>
+    <param name="obstacle_weight" value="0.95"/>
+    <param name="inflation_radius" value="0.7"/>
+    <param name="direction_speed_lim" value="40"/>
+    <param name="direction_gain_multi" value="0.2"/>
+    <param name="direction_gain_offset" value="0.3"/>
+    <param name="speed_gain_multi" value="0.1"/>
+    <param name="speed_gain_offset" value="0.2"/>
+    <param name="max_detection_dist" value="4"/>
+    <param name="stop_distance" value="1.2"/>
+    <param name="bound_ang" value="90"/>   -->
 
 	</node>
 

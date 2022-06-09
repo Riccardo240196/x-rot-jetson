@@ -1,7 +1,7 @@
 <launch>
 	<arg name="filename" default="xrot/"/>
 	
-	<node pkg="rosbag" type="record" name="rosbag_recorder" args="-o /media/ubuntu/data2/
+	<node pkg="rosbag" type="record" name="rosbag_recorder" args="-o /media/ubuntu/data2/validation
 /received_messages
 /can_messages_A
 /can_messages_B
