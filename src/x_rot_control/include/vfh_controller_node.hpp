@@ -98,7 +98,10 @@ private:
     double direction;                       // direction chosen [deg]. When local planner has not control of the robot its value is 0.
     double prev_direction;                  // previous direction [deg]
     double direction_gain;                  // gain of the proportional controller used to steer the robot.
-    double direction_gain_param;                  // gain of the proportional controller used to steer the robot.
+    double direction_gain_multi;            // multiplier of the direction gain function of ref speed.
+    double direction_gain_offset;           // offset of the direction gain function of ref speed.
+    double speed_gain_multi;                // multiplier of the speed gain function of ref speed.
+    double speed_gain_offset;               // offset of the speed gain function of ref speed.
     double direction_speed_lim;             // limit of the possible robot turning speed [deg/s]
 	// local planner parameters - linear speed
     float speed_upper_lim;                  // linear speed upper limit [m/s]
@@ -109,6 +112,7 @@ private:
     float speed_gain;                       // gain of the linear speed.
     // local planner parameters - costs
 	int num_of_sector = 180;                // number of sectors
+    int window_size_param = 10;                 // parameter to select window size in obst cost propagation. it is multiplied by num_of_sectr/360
     float sector_width;                     // width of each sector [deg]. sector_width=360/num_of_sector.
     float obstacle_weight;                  // weight of the obstacle cost
     float target_dir_weight;                // weight of the target direction cost

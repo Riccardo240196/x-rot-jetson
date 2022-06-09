@@ -73,15 +73,14 @@ class xrot_position_control:
         self.Closes_Obst_Orient = 0
         self.Speed_Request = 128
         self.Steering_Request = 128
-        
-        self.already_published = False
+        self.received_path = False
 
     def cmd_vel_cbk(self,msg):
-        self.Allarm_ON = msg.linear.z
+        self.Allarm_ON = msg.linear.y
         self.Request_Control = msg.linear.z
         self.Closes_Obst_Dist = 0
         self.Closes_Obst_Orient = 0
-        self.Speed_Request = int(round(128 + msg.linear.x*127)*self.Allarm_ON)
+        self.Speed_Request = int(round(128 + msg.linear.x*127))
         self.Steering_Request = int(round((-msg.angular.z + 0.75)*255/1.5)) # 0 full left (positive omega), 255 full rigth (negative omega)
         self.send_local_planner()
 
@@ -111,7 +110,7 @@ class xrot_position_control:
     def send_local_planner(self):
         message_def = self.db.get_message_by_name('LocalPlanner')
         data = message_def.encode({ 'Request_Control': self.Request_Control,
-                                    'Allarm_ON': self.Allarm_ON,
+                                    'Allarm_ON': self.Request_Control, # alaram_on is used only for the path
                                     'Closes_Obst_Dist': self.Closes_Obst_Dist,
                                     'Closes_Obst_Orient': self.Closes_Obst_Orient,
                                     'Speed_Request': self.Speed_Request,
@@ -141,8 +140,7 @@ class xrot_position_control:
     def read_pos_from_can(self):
         # self.bus.reset()
         msg = self.bus.recv(0.1)
-        # print('\n\n\n',msg.arbitration_id,'\n\n\n')
-
+        
         try:
             # vehicle pose
             if msg.arbitration_id == 0x304:
@@ -212,10 +210,13 @@ class xrot_position_control:
                 self.pose_present = True
 
                 # self.pub_can_odometry.publish(self.can_odometry)
+            else:
+                if(not msg.arbitration_id == 0x104):
+                    print('\n\n\n',msg.arbitration_id,'\n\n\n')
 
             # trajectory
             if msg.arbitration_id == 0x190:
-
+                
                 data = list(msg.data)
             
                 # X position                                    
@@ -273,7 +274,6 @@ class xrot_position_control:
                 # print("received point ",point_pose.pose.position,  msg.arbitration_id )
 
             if msg.arbitration_id == 0x210:
-
                 data = list(msg.data)
             
                 # X position                                    

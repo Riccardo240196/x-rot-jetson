@@ -35,7 +35,10 @@ VFHController::VFHController(ros::NodeHandle* nodehandle):nh_(*nodehandle)
 	direction = 0;
     prev_direction = 0;
     direction_gain = 0.7;
-    direction_gain_param = 0.1;
+    direction_gain_multi = 0.1;
+    direction_gain_offset = 0.3;
+    speed_gain_multi = 0.3;
+    speed_gain_offset = 0.2;
     direction_speed_lim = 10;
     // local planner parameters - linear speed
     speed_upper_lim = 0.6;
@@ -46,6 +49,7 @@ VFHController::VFHController(ros::NodeHandle* nodehandle):nh_(*nodehandle)
     speed_gain = (speed_upper_lim - speed_lower_lim)/(max_detection_dist - stop_distance);
     // local planner parameters - costs
     num_of_sector = 180;
+    window_size_param = 10;
     sector_width = 360/(float)num_of_sector;
     obstacle_weight = 0.95;
     target_dir_weight = 0.1;
@@ -96,6 +100,7 @@ void VFHController::reconfigureCallback(x_rot_control::x_rot_controlConfig &conf
     consensus_th = config.consensus_th;
     // local planner costs parameters
     num_of_sector = config.num_of_sector;
+    window_size_param = config.window_size_param;
     obstacle_weight = config.obstacle_weight;
     target_dir_weight = config.target_dir_weight;
     prev_dir_weight = config.prev_dir_weight;
@@ -113,7 +118,10 @@ void VFHController::reconfigureCallback(x_rot_control::x_rot_controlConfig &conf
     linear_accel_lim = config.linear_accel_lim;
     // angular speed cmd parameters
     direction_speed_lim = config.direction_speed_lim;
-    direction_gain_param = config.direction_gain_param;
+    direction_gain_multi = config.direction_gain_multi;
+    direction_gain_offset = config.direction_gain_offset;
+    speed_gain_multi = config.speed_gain_multi;
+    speed_gain_offset = config.speed_gain_offset;
     // verbose
     verbose = config.verbose;
     
@@ -608,6 +616,7 @@ void VFHController::vfhController() {
         lateral_dist = -1;
         path_point_received = false;
         ctrl_word = 0;
+        cout<<"x_rot_vfh_controller :: exit for conditions at line 611"<<endl;
         speed_cmd = 0;
         direction = prev_direction;
         return;
@@ -661,6 +670,7 @@ void VFHController::vfhController() {
         stop = 0;
         alarm_on = 0;
         ctrl_word = 0;
+        cout<<"x_rot_vfh_controller :: exit because min dist is "<<min_dist <<" and path point received is "<<path_point_received<<endl;
         path_point_received = false;
     }
 
@@ -726,7 +736,7 @@ void VFHController::vfhController() {
     // build obstacle cost and overall cost
     int ind = 0;
     int window_idx = 0;
-    int window_size = num_of_sector*30/360; // dispari
+    int window_size = num_of_sector*window_size_param/360; // dispari
     if(window_size%2==0)
         window_size+=1;
     
@@ -860,7 +870,7 @@ void VFHController::local_planner_pub() {
     else 
         ref_dir = ref_direction;
 
-    direction_gain = 0.3+direction_gain_param*abs(ref_dir-direction)*M_PI/180;
+    direction_gain = direction_gain_offset+direction_gain_multi*abs(ref_dir-direction)*M_PI/180;
     if (direction_gain>0.7)
         direction_gain = 0.7;
 
@@ -868,7 +878,7 @@ void VFHController::local_planner_pub() {
     if (abs(angular_speed) > speed_upper_lim/2) 
         angular_speed = angular_speed/abs(angular_speed)*speed_upper_lim/2; 
 
-    speed_gain = 0.2 - 0.03*abs(ref_dir-direction)*M_PI/180;
+    speed_gain = speed_gain_offset - speed_gain_multi*abs(ref_dir-direction)*M_PI/180;
     if (speed_gain<0.1)
         speed_gain = 0.1;
     double min_dist_speed = (speed_gain * (min_dist - stop_distance));
@@ -890,12 +900,12 @@ void VFHController::local_planner_pub() {
     if (speed_cmd < 0)
         speed_cmd = 0;
 
-    if (stop && !path_point_received){
-        direction = 0;
-        angular_speed = direction_gain*direction*M_PI/180.0;
-        speed_cmd = 0.5;
-    }
-    else if (stop && path_point_received){
+    // if (stop && !path_point_received){
+    //     direction = 0;
+    //     angular_speed = direction_gain*direction*M_PI/180.0;
+    //     speed_cmd = 0.5;
+    // }
+    if (stop){
         direction = 0;
         speed_cmd = 0;
     }
@@ -919,6 +929,8 @@ void VFHController::local_planner_pub() {
         var_debug.data.push_back(boundaries[0]);
         var_debug.data.push_back(boundaries[1]);
         var_debug.data.push_back(alarm_on);
+        var_debug.data.push_back(direction_gain);
+        var_debug.data.push_back(speed_gain);        
         debug_pub_.publish(var_debug);
     }
 
@@ -929,13 +941,6 @@ void VFHController::local_planner_pub() {
     planner_msg.linear.z = ctrl_word;
     planner_msg.angular.z = angular_speed;
     local_planner_pub_.publish(planner_msg);
-
-    // Publish local planner message GAZEBO  
-    geometry_msgs::Twist planner_msg_sim;
-    planner_msg_sim.linear.x = speed_cmd;
-    planner_msg_sim.linear.z = ctrl_word;
-    planner_msg_sim.angular.z = angular_speed;
-    local_planner_pub_gazebo_.publish(planner_msg_sim);
 
 }
 
