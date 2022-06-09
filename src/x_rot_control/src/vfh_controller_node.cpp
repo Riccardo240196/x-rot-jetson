@@ -23,17 +23,19 @@ VFHController::VFHController(ros::NodeHandle* nodehandle):nh_(*nodehandle)
     lateral_dist = -1;
     dist_from_point = -1;
     path_point_received = false;
+    path_point_requested = false;
     ctrl_word = 0; 
+    alarm_on = 0;
     stop = 0;
-    max_detection_dist = 3;
+    max_detection_dist = 4;
     max_angle_dist = 20;
-    stop_distance = 2;
+    stop_distance = 1;
     min_dist = 100;
     // local planner parameters - direction
 	direction = 0;
     prev_direction = 0;
-    direction_gain_in = 0.4;
-    direction_gain_out = 0.7;
+    direction_gain = 0.7;
+    direction_gain_param = 0.1;
     direction_speed_lim = 10;
     // local planner parameters - linear speed
     speed_upper_lim = 0.6;
@@ -59,6 +61,7 @@ VFHController::VFHController(ros::NodeHandle* nodehandle):nh_(*nodehandle)
     lateral_dist_th = 1; // [m]
     goal_dist_th = 2.5; // [m]
     prev_goal_index = 0;
+    dist_traj_end = 15; // [m]
     // verbse
     verbose = true;
      
@@ -110,8 +113,7 @@ void VFHController::reconfigureCallback(x_rot_control::x_rot_controlConfig &conf
     linear_accel_lim = config.linear_accel_lim;
     // angular speed cmd parameters
     direction_speed_lim = config.direction_speed_lim;
-    direction_gain_in = config.direction_gain_in;
-    direction_gain_out = config.direction_gain_out;
+    direction_gain_param = config.direction_gain_param;
     // verbose
     verbose = config.verbose;
     
@@ -166,33 +168,16 @@ void VFHController::robotPoseCallback(const nav_msgs::Odometry& msg) { // GAZEBO
                       sin(yaw), cos(yaw), robot_pose_y,
                       0, 0, 1;
 
-    if (ctrl_word && robot_pose_x<16.8) {
-        goal_x = 17;
-        goal_y = 0;
-        path_point_received = true;
-    }
-    else if (ctrl_word && robot_pose_x>17 && robot_pose_x<33.8) {
-        goal_x = 34;
-        goal_y = 0;
-        path_point_received = true;
-    }
-    else if (ctrl_word && robot_pose_x>34 && robot_pose_x<51.8) {
-        goal_x = 52;
-        goal_y = 0;
-        path_point_received = true;
-    }
-
     if (path_point_received) {
         double delta_x = goal_x - robot_pose_x;
         double delta_y = goal_y - robot_pose_y;
         ref_direction = 180/M_PI*(atan2(delta_y,delta_x) - robot_pose_theta);
 
         dist_from_point = sqrt(pow(delta_x,2) + pow(delta_y,2));
-        double ang = atan2(delta_y,delta_x);
-        lateral_dist = abs(dist_from_point*sin(ang));
-
-        if (dist_from_point<0.5) // ADDED JUST FOR GAZEBO SIMULATION
-            ref_direction = 180/M_PI*(atan2(delta_y,delta_x+2) - robot_pose_theta); // ADDED JUST FOR GAZEBO SIMULATION
+        double a = -tan(path_direction);
+        double c = -a*goal_x - goal_y;
+        lateral_dist = abs(robot_pose_x*a + robot_pose_y + c)/sqrt(a*a+1);
+        lateral_dist_sign = -((robot_pose_x*a + robot_pose_y + c)/sqrt(a*a+1))/lateral_dist;
 
         if (ref_direction<0)
             ref_direction = 360 + ref_direction;     
@@ -200,6 +185,7 @@ void VFHController::robotPoseCallback(const nav_msgs::Odometry& msg) { // GAZEBO
     else {
         ref_direction = 0;
         lateral_dist = -1;
+        lateral_dist_sign = 0;
         dist_from_point = -1;
     }
     
@@ -223,6 +209,30 @@ void VFHController::robotPoseCallback_2(const nav_msgs::Odometry& msg) {
     map_to_vehicle << cos(yaw), -sin(yaw), robot_pose_x,
                       sin(yaw), cos(yaw), robot_pose_y,
                       0, 0, 1;
+
+    // Calculate reference direction, lateral distance from path and distance from goal point
+    if (path_point_received) {
+        double delta_x = goal_x - robot_pose_x;
+        double delta_y = goal_y - robot_pose_y;
+        ref_direction = 180/M_PI*(atan2(delta_y,delta_x) - robot_pose_theta);
+
+        dist_from_point = sqrt(pow(delta_x,2) + pow(delta_y,2));
+
+        double a = -tan(path_direction);
+        double c = -a*goal_x - goal_y;
+        lateral_dist = abs(robot_pose_x*a + robot_pose_y + c)/sqrt(a*a+1);
+        lateral_dist_sign = -((robot_pose_x*a + robot_pose_y + c)/sqrt(a*a+1))/lateral_dist;
+
+        if (ref_direction<0)
+            ref_direction = 360 + ref_direction;      
+    }
+    else {
+        ref_direction = 0;
+        lateral_dist = -1;
+        lateral_dist_sign = 0;
+        dist_from_point = -1;
+    }
+
     
 }
 
@@ -231,8 +241,8 @@ void VFHController::pathPointCallback(const nav_msgs::Odometry& msg) {
     double path_point_x = msg.pose.pose.position.x;
     double path_point_y = msg.pose.pose.position.y;
     
-    goal_x = path_point_x;
-    goal_y = path_point_y;
+    // goal_x = path_pont_x;
+    // goal_y = path_point_y;i
 
     path_point_received = true;
     // cout<< "path point! "<<path_point_x <<" " <<path_point_y <<endl;
@@ -479,14 +489,7 @@ void VFHController::update_goal_position(){
     }
     double path_x, path_x2, path_y, path_y2, diff_x, diff_y; 
 
-    // cout << "\n----------------------------------------------------\n";
-    // std::cout << "\nrobot poses \n";
-    // std::cout << robot_pose_x << "," << robot_pose_y << "\t";
-    // std::cout << "\npath_points \n";
-    // for (int i=0; i<path_points.size(); i++) {
-    //     std::cout << path_points[i][0] << "," << path_points[i][1] << "\t";
-    // }
-    // select goal at distance max_detection_dist
+    if (path_point_requested) {prev_goal_index = 0;}
     double path_length=0;
     int goal_index=0;
     int closest_point_index=0;
@@ -496,21 +499,22 @@ void VFHController::update_goal_position(){
         diff_x = path_x - robot_pose_x;
         diff_y = path_y - robot_pose_y;
         double ang = atan2(diff_y,diff_x) - robot_pose_theta;
-        if(abs(ang*180/M_PI)<90){
-            double dist_projected = sqrt(diff_y*diff_y + diff_x*diff_x) * cos(ang);
-            dists.push_back(dist_projected);
+        if(abs(atan2(diff_y,diff_x)*180/M_PI)<45){
+            // double dist = sqrt(diff_y*diff_y + diff_x*diff_x)*cos(ang);
+            double dist = sqrt(diff_y*diff_y + diff_x*diff_x);
+            dists.push_back(dist);
         } 
         else {
             dists.push_back(1000);
         }
     }
-    // std::cout << "\ndists vect \n";
-    // //find min;
-    // for (int i=0; i<dists.size(); i++) {
-    //     std::cout << dists[i] << "\t";
-    // }
+    // cout<<endl;
+    // for(int i=0; i<dists.size(); i++)
+    //     cout<<dists[i]<<' ';
+    // cout<<endl;
 
     closest_point_index = min_element(dists.begin()+prev_goal_index,dists.end()) - dists.begin();
+    dist_traj_end = max_element(dists.begin()+prev_goal_index,dists.end()) - dists.begin();
     path_length += dists[closest_point_index];
     // std::cout << "\npath_length: " << path_length << "\n";
     // std::cout << "closest_point_index: " << closest_point_index << "\n";
@@ -586,30 +590,6 @@ void VFHController::update_goal_position(){
         path_direction = angle1/2 + angle2/2;
 
     }
-    // std::cout << "path_direction: " << path_direction << "\n";
-    // std::cout << "robot_pose_theta: " << robot_pose_theta << "\n";
-    // Calculate reference direction, lateral distance from path and distance from goal point
-    if (path_point_received) {
-        double delta_x = goal_x - robot_pose_x;
-        double delta_y = goal_y - robot_pose_y;
-        ref_direction = 180/M_PI*(atan2(delta_y,delta_x) - robot_pose_theta);
-
-        dist_from_point = sqrt(pow(delta_x,2) + pow(delta_y,2));
-        // double ang = atan2(delta_y,delta_x);
-        // lateral_dist = abs(dist_from_point*cos(ang));
-
-        double a = -tan(path_direction);
-        double c = -a*goal_x - goal_y;
-        lateral_dist = abs(robot_pose_x*a + robot_pose_y + c)/sqrt(a*a+1);
-
-        if (ref_direction<0)
-            ref_direction = 360 + ref_direction;      
-    }
-    else {
-        ref_direction = 0;
-        lateral_dist = -1;
-        dist_from_point = -1;
-    }
     
 }
 
@@ -622,9 +602,7 @@ void VFHController::vfhController() {
         return;
     }
     
-    // cout << "\nlateral_dist: "<< lateral_dist << endl;
-    // cout << "ang diff: "<< abs(robot_pose_theta-path_direction)*180/M_PI << endl;
-    if (!stop && lateral_dist<lateral_dist_th && lateral_dist>0 && abs(robot_pose_theta-path_direction)*180/M_PI<angle_to_goal_th && weights_inverted){   
+    if (!stop && min_dist>max_detection_dist && lateral_dist<lateral_dist_th && lateral_dist>0 && lateral_dist_sign*(robot_pose_theta-path_direction)*180/M_PI<angle_to_goal_th && lateral_dist_sign*(robot_pose_theta-path_direction)*180/M_PI>0){   
         // Reset local planner params     
         dist_from_point = -1;
         lateral_dist = -1;
@@ -632,21 +610,8 @@ void VFHController::vfhController() {
         ctrl_word = 0;
         speed_cmd = 0;
         direction = prev_direction;
-        // Invert again directions weights
-        double temp = target_dir_weight;
-        target_dir_weight = prev_dir_weight;
-        prev_dir_weight = temp;
-        weights_inverted = false;
         return;
     }
-
-    // Invert directions weights
-    if (lateral_dist > weight_inversion_lat_dist && lateral_dist < (weight_inversion_lat_dist + 2) && !weights_inverted) {
-        double temp = target_dir_weight;
-        target_dir_weight = prev_dir_weight;
-        prev_dir_weight = temp;
-        weights_inverted = true;
-    } 
         
     // Add circles to x,y points and FIND Min distance
     int circle_points = 90;
@@ -664,8 +629,8 @@ void VFHController::vfhController() {
         
         if(abs(ang)<max_angle_dist && eucl_dist<min_dist)
             min_dist = eucl_dist;
-        
-        if(eucl_dist<min_stop_dist)
+
+        if(abs(ang)<45 && eucl_dist<min_stop_dist)
             min_stop_dist = eucl_dist;
 
         if (meas_x_filtered[i]==0 && meas_y_filtered[i]==0) {
@@ -684,23 +649,32 @@ void VFHController::vfhController() {
     }  
 
     // set STOP and CTRL_WORD var
-    // TODO: Think of this first condition: inside a vineyard can become true even if we decrease the FOV 
-    // to take control to 5 deg since stop_distance is evaluated always considering the overall 45 deg of FOV
-    if ((!stop && min_stop_dist < stop_distance)||
-        (stop && min_stop_dist < (stop_distance+0.1))||
-        (ref_direction>90 && ref_direction<270)){
+    if ((!stop && min_dist < stop_distance)){
         stop = 1;
+        alarm_on = 1;
         ctrl_word = 1;
     } else if (min_dist < max_detection_dist || path_point_received) {
         stop = 0;
+        alarm_on = 1;
         ctrl_word = 1;
     } else {
         stop = 0;
+        alarm_on = 0;
         ctrl_word = 0;
         path_point_received = false;
     }
 
-    // TODO: if path_point_received FALSE -> set stop=1 and then return
+    if (path_point_received && min_dist < max_detection_dist && !path_point_requested) {
+        stop = 0;
+        alarm_on = 1;
+        ctrl_word = 1;
+        path_point_requested = true;
+    } 
+    if (min_dist >= max_detection_dist) {
+        alarm_on = 0;
+        path_point_requested = false;
+    }
+
     if (!path_point_received) {
         stop=1;
         return;
@@ -737,8 +711,8 @@ void VFHController::vfhController() {
     // Gaussian properties
     double coeff[4] = {0.845015753269096,4.96041666063205,-0.188303172580222,-4.44023451783892};
     double gaussian_shift = round((float)num_of_sector/2);
-    double gaussian_weight_target = findGaussianWeight(coeff)*1.5;
-    double gaussian_weight_prev_dir = findGaussianWeight(coeff)/1.5;
+    double gaussian_weight_target = findGaussianWeight(coeff);
+    double gaussian_weight_prev_dir = findGaussianWeight(coeff);
     double coeff2[4] = {0.369389785763626,3.64914690021850,-0.216102762982391,-3.84497580829445};
     
     // build target direction cost
@@ -755,7 +729,16 @@ void VFHController::vfhController() {
     int window_size = num_of_sector*30/360; // dispari
     if(window_size%2==0)
         window_size+=1;
-        
+    
+    double ref_dir_weight=0;
+    float k_ref_dir = 0.05;
+    if (ref_direction > 180)
+        ref_dir_weight = abs(ref_direction - 360);
+    else 
+        ref_dir_weight = ref_direction;
+
+    target_dir_weight = prev_dir_weight + k_ref_dir * ref_dir_weight;
+
     for (int k=0; k<num_of_sector; k++) {
         int ind = k;    
         for (int i = ind-(window_size/2); i < ind + (window_size/2)+1; i++) {
@@ -764,7 +747,7 @@ void VFHController::vfhController() {
             cost_obstacle[k] += (1/dist_to_associate[window_idx]);
         }
         cost_obstacle[k] = cost_obstacle[k] / window_size;    
-        overall_cost[k] = obstacle_weight * cost_obstacle[k] + target_dir_weight * cost_target[k] + prev_dir_weight * cost_prev[k];   
+        overall_cost[k] = obstacle_weight * cost_obstacle[k] + (target_dir_weight) * cost_target[k] + prev_dir_weight * cost_prev[k];   
     }
 
     // DEBUG - overall cost
@@ -785,24 +768,24 @@ void VFHController::vfhController() {
     
     if (ctrl_word && min_dist<max_detection_dist) {
 
-        // for (int i=1; i<num_of_sector; i++) {
-        //     if (abs(overall_cost[i] - overall_cost[i-1])>1e-4)
-        //         vec.push_back(i-1);
-        // }
+        for (int i=1; i<num_of_sector; i++) {
+            if (abs(overall_cost[i] - overall_cost[i-1])>1e-4)
+                vec.push_back(i-1);
+        }
         
-        // for (int i=0; i<vec.size()-1; i++) {
-        //     if (abs(vec[i+1]-vec[i]) > 1) {
-        //         bounds.push_back(vec[i]);
-        //         bounds.push_back(vec[i+1]);
-        //     }
-        // }
+        for (int i=0; i<vec.size()-1; i++) {
+            if (abs(vec[i+1]-vec[i]) > 1) {
+                bounds.push_back(vec[i]);
+                bounds.push_back(vec[i+1]);
+            }
+        }
     
-        // int bound_1 = search_closest(bounds,boundaries[0]);
-        // int bound_2 = search_closest(bounds,boundaries[1]);
-        // if (bound_1 < boundaries[0] && bound_1!=0) 
-        //     boundaries[0] = bound_1;
-        // if (bound_2 > boundaries[1] && bound_2!=num_of_sector)
-        //     boundaries[1] = bound_2;
+        int bound_1 = search_closest(bounds,boundaries[0]);
+        int bound_2 = search_closest(bounds,boundaries[1]);
+        if (bound_1 < boundaries[0] && bound_1!=0) 
+            boundaries[0] = bound_1;
+        if (bound_2 > boundaries[1] && bound_2!=num_of_sector)
+            boundaries[1] = bound_2;
     }
 
     for (int i=1; i<num_of_sector; i++) {
@@ -820,7 +803,7 @@ void VFHController::vfhController() {
 
     if (direction > 180)
         direction = direction - 360;
-    
+
     if( abs(direction-prev_direction)*node_frequency > direction_speed_lim){
         double sign = (direction-prev_direction)/abs(direction-prev_direction);
         direction = prev_direction + sign*direction_speed_lim/node_frequency;
@@ -841,10 +824,10 @@ void VFHController::vfhController() {
         ref_dir_pose.pose.orientation.z = q.z();
         ref_dir_pose.pose.orientation.w = q.w();
 
-        goal_pose.header.frame_id = "chassis";
+        goal_pose.header.frame_id = "odom";
         goal_pose.header.stamp = ros::Time::now();
-        goal_pose.pose.position.y = (goal_x - robot_pose_x);
-        goal_pose.pose.position.x = -(goal_y - robot_pose_y);
+        goal_pose.pose.position.x = goal_x;
+        goal_pose.pose.position.y = goal_y;
         q.setRPY(0, 0, (ref_direction+180)*M_PI/180.0);
         goal_pose.pose.orientation.x = q.x();
         goal_pose.pose.orientation.y = q.y();
@@ -871,19 +854,28 @@ void VFHController::local_planner_pub() {
         }
     }
     
-    // evaluate speed cmd
-    double angular_speed = direction_gain_out*direction*M_PI/180.0;
-    if(weights_inverted)
-        angular_speed = direction_gain_in*direction*M_PI/180.0;
+    double ref_dir;
+    if (ref_direction > 180)
+        ref_dir = ref_direction - 360;
+    else 
+        ref_dir = ref_direction;
 
+    direction_gain = 0.3+direction_gain_param*abs(ref_dir-direction)*M_PI/180;
+    if (direction_gain>0.7)
+        direction_gain = 0.7;
+
+    double angular_speed = direction_gain*direction*M_PI/180.0;
     if (abs(angular_speed) > speed_upper_lim/2) 
         angular_speed = angular_speed/abs(angular_speed)*speed_upper_lim/2; 
 
+    speed_gain = 0.2 - 0.03*abs(ref_dir-direction)*M_PI/180;
+    if (speed_gain<0.1)
+        speed_gain = 0.1;
     double min_dist_speed = (speed_gain * (min_dist - stop_distance));
 
     double goal_dist_speed = speed_upper_lim;
     if (dist_from_point>0)
-        goal_dist_speed = (speed_upper_lim/5)*dist_from_point;
+        goal_dist_speed = speed_gain*dist_from_point;
 
     if (ctrl_word) 
         speed_cmd = min(min(min_dist_speed,speed_upper_lim-abs(angular_speed)),goal_dist_speed);
@@ -898,7 +890,12 @@ void VFHController::local_planner_pub() {
     if (speed_cmd < 0)
         speed_cmd = 0;
 
-    if (stop){
+    if (stop && !path_point_received){
+        direction = 0;
+        angular_speed = direction_gain*direction*M_PI/180.0;
+        speed_cmd = 0.5;
+    }
+    else if (stop && path_point_received){
         direction = 0;
         speed_cmd = 0;
     }
@@ -921,15 +918,24 @@ void VFHController::local_planner_pub() {
         var_debug.data.push_back(path_point_received);
         var_debug.data.push_back(boundaries[0]);
         var_debug.data.push_back(boundaries[1]);
+        var_debug.data.push_back(alarm_on);
         debug_pub_.publish(var_debug);
     }
 
     // Publish local planner message    
     geometry_msgs::Twist planner_msg;
     planner_msg.linear.x = speed_cmd;
+    planner_msg.linear.y = alarm_on;
     planner_msg.linear.z = ctrl_word;
     planner_msg.angular.z = angular_speed;
     local_planner_pub_.publish(planner_msg);
+
+    // Publish local planner message GAZEBO  
+    geometry_msgs::Twist planner_msg_sim;
+    planner_msg_sim.linear.x = speed_cmd;
+    planner_msg_sim.linear.z = ctrl_word;
+    planner_msg_sim.angular.z = angular_speed;
+    local_planner_pub_gazebo_.publish(planner_msg_sim);
 
 }
 

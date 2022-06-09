@@ -82,9 +82,12 @@ private:
     // local planner parameters - main
 	double ref_direction;                   // target direction (GOAL) [deg]. When local planner has not control of the robot its value is 0.
 	double lateral_dist;                    // lateral distance with respect to GOAL [m]. When local planner has not control of the robot its value is -1.
+    float lateral_dist_sign;                // lateral distance sign [-]. When local planner has not control of the robot its value is 0.
     double dist_from_point;                 // euclidean distance from GOAL [m]. When local planner has not control of the robot its value is -1.
     bool path_point_received;               // TRUE when GOAL is received from CAN. FALSE when the GOAL is reached.
-    bool ctrl_word;                         // TRUE when the measured distance is below 'max_detection_dist' or 'lateral_dist' is > 0. FALSE when the GOAL is reached.
+    bool path_point_requested;              // TRUE when GOAL is requested to gloabl panner, FALSE otherwise.
+    bool ctrl_word;                         // TRUE when the measured distance is below 'max_detection_dist' or path_point_received is TRUE. FALSE when the GOAL is reached.
+    bool alarm_on;                          // TRUE when the measured distance is below 'max_detection_dist'. FALSE when the GOAL is reached.
     bool stop;                              // TRUE when the measured distance is below 'stop_distance'. FALSE when the GOAL is reached.
     float max_detection_dist;               // distance that triggers the avoidance manouver (defined in vehicle frame) [m]
     float max_angle_dist;                   // max angle at which 'min_dist' should be to actually triggers the avoidance manouver [deg]
@@ -94,8 +97,8 @@ private:
 	// local planner parameters - direction
     double direction;                       // direction chosen [deg]. When local planner has not control of the robot its value is 0.
     double prev_direction;                  // previous direction [deg]
-    double direction_gain_in;                  // gain of the proportional controller used to steer the robot in.
-    double direction_gain_out;                  // gain of the proportional controller used to steer the robot out.
+    double direction_gain;                  // gain of the proportional controller used to steer the robot.
+    double direction_gain_param;                  // gain of the proportional controller used to steer the robot.
     double direction_speed_lim;             // limit of the possible robot turning speed [deg/s]
 	// local planner parameters - linear speed
     float speed_upper_lim;                  // linear speed upper limit [m/s]
@@ -125,6 +128,7 @@ private:
     double path_direction;
     float goal_dist_th;
     float prev_goal_index;
+    double dist_traj_end;
     // Transformation matrices 
     Matrix<double, 3, 3> vehicle_to_radar;  // vehicle to radar transformation matrix
     Matrix<double, 3, 3> map_to_vehicle;    // map to vehicle transformation matrix
