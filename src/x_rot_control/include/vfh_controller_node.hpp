@@ -99,10 +99,12 @@ private:
     double prev_direction;                  // previous direction [deg]
     double direction_gain;                  // gain of the proportional controller used to steer the robot.
     double direction_gain_multi;            // multiplier of the direction gain function of ref speed.
-    double direction_gain_offset;           // offset of the direction gain function of ref speed.
+    double direction_gain_offset;           // offset of the direction gain function of ref speed
+    double direction_gain_max;             
     double speed_gain_multi;                // multiplier of the speed gain function of ref speed.
     double speed_gain_offset;               // offset of the speed gain function of ref speed.
     double direction_speed_lim;             // limit of the possible robot turning speed [deg/s]
+    float k_ref_dir;                        // relative weight between ref and prev dir
 	// local planner parameters - linear speed
     float speed_upper_lim;                  // linear speed upper limit [m/s]
     float speed_lower_lim;                  // linear speed lower limit [m/s]

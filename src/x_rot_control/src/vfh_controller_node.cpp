@@ -35,13 +35,14 @@ VFHController::VFHController(ros::NodeHandle* nodehandle):nh_(*nodehandle)
 	direction = 0;
     prev_direction = 0;
     direction_gain = 0.7;
-    direction_gain_multi = 0.1;
+    direction_gain_multi = 0.5;
     direction_gain_offset = 0.3;
-    speed_gain_multi = 0.3;
+    direction_gain_max = 1;
+    speed_gain_multi = 0.03;
     speed_gain_offset = 0.2;
     direction_speed_lim = 10;
     // local planner parameters - linear speed
-    speed_upper_lim = 0.6;
+    speed_upper_lim = 0.8;
 	speed_cmd = 0;
     speed_cmd_prev = 0;
     linear_accel_lim = 1;
@@ -49,10 +50,11 @@ VFHController::VFHController(ros::NodeHandle* nodehandle):nh_(*nodehandle)
     speed_gain = (speed_upper_lim - speed_lower_lim)/(max_detection_dist - stop_distance);
     // local planner parameters - costs
     num_of_sector = 180;
-    window_size_param = 10;
+    window_size_param = 20;
     sector_width = 360/(float)num_of_sector;
     obstacle_weight = 0.95;
     target_dir_weight = 0.1;
+    k_ref_dir = 0.05;
     prev_dir_weight = 0.2;
     inflation_radius = 0.7;
     // local planner parameters - directions weights inversion
@@ -103,6 +105,7 @@ void VFHController::reconfigureCallback(x_rot_control::x_rot_controlConfig &conf
     window_size_param = config.window_size_param;
     obstacle_weight = config.obstacle_weight;
     target_dir_weight = config.target_dir_weight;
+    k_ref_dir = config.k_ref_dir;
     prev_dir_weight = config.prev_dir_weight;
     weight_inversion_lat_dist = config.weight_inversion_lat_dist;
     inflation_radius = config.inflation_radius;
@@ -120,6 +123,7 @@ void VFHController::reconfigureCallback(x_rot_control::x_rot_controlConfig &conf
     direction_speed_lim = config.direction_speed_lim;
     direction_gain_multi = config.direction_gain_multi;
     direction_gain_offset = config.direction_gain_offset;
+    direction_gain_max = config.direction_gain_max;
     speed_gain_multi = config.speed_gain_multi;
     speed_gain_offset = config.speed_gain_offset;
     // verbose
@@ -741,7 +745,6 @@ void VFHController::vfhController() {
         window_size+=1;
     
     double ref_dir_weight=0;
-    float k_ref_dir = 0.05;
     if (ref_direction > 180)
         ref_dir_weight = abs(ref_direction - 360);
     else 
@@ -871,8 +874,8 @@ void VFHController::local_planner_pub() {
         ref_dir = ref_direction;
 
     direction_gain = direction_gain_offset+direction_gain_multi*abs(ref_dir-direction)*M_PI/180;
-    if (direction_gain>0.7)
-        direction_gain = 0.7;
+    if (direction_gain>direction_gain_max)
+        direction_gain = direction_gain_max;
 
     double angular_speed = direction_gain*direction*M_PI/180.0;
     if (abs(angular_speed) > speed_upper_lim/2) 
