@@ -52,7 +52,7 @@ private:
     ros::Subscriber sonar_dx_sub,sonar_sx_sub; 
     ros::Publisher  local_planner_pub_;
     ros::Publisher  cloud_pub_;
-    ros::Publisher  overall_cost_pub_;
+    ros::Publisher  overall_cost_pub_,obst_cost_pub_,target_cost_pub_,prev_cost_pub_;
     ros::Publisher  debug_pub_;
     ros::Publisher  goal_pose_pub_, ref_dir_pose_pub_; 
     dynamic_reconfigure::Server<x_rot_control::x_rot_controlConfig> server;
@@ -94,9 +94,11 @@ private:
                                                 // toghether with 'max_detection_dist' determine the frontal cone area in which an object should be to trigger the avoidance.
     float stop_distance;                    // minimum distance to stop the vehicle (defined in vehicle frame) [m]
     double min_dist;                        // minimum measured distance (defined in vehicle frame) [m]
+    double min_dist_allFOV;
 	// local planner parameters - direction
     double direction;                       // direction chosen [deg]. When local planner has not control of the robot its value is 0.
     double prev_direction;                  // previous direction [deg]
+    float bound_ang = 90; // deg
     double direction_gain;                  // gain of the proportional controller used to steer the robot.
     double direction_gain_multi;            // multiplier of the direction gain function of ref speed.
     double direction_gain_offset;           // offset of the direction gain function of ref speed
@@ -115,9 +117,11 @@ private:
     // local planner parameters - costs
 	int num_of_sector = 180;                // number of sectors
     int window_size_param = 10;                 // parameter to select window size in obst cost propagation. it is multiplied by num_of_sectr/360
+    int window_size_param_max= 20;
     float sector_width;                     // width of each sector [deg]. sector_width=360/num_of_sector.
     float obstacle_weight;                  // weight of the obstacle cost
     float target_dir_weight;                // weight of the target direction cost
+    float target_dir_weight_initial;        
     float prev_dir_weight;                  // weight of the previous direction cost
     float inflation_radius;                 // radius of the circle that is added to each measured point [m]
     std::vector<float> sector_limits_up;    // vector of sectors upper limits [deg]
@@ -172,9 +176,9 @@ private:
     void sonarDxCallback(const sensor_msgs::Range& msg);
     void sonarSxCallback(const sensor_msgs::Range& msg);
 	// Methods for vector field histogram controller
-    void normpdf(const std::vector<int>& sector_array, int sector_index, double gaussian_weight, std::vector<double>& norm_distribution);
+    void normpdf(const std::vector<int>& sector_array, int sector_index, double gaussian_weight, std::vector<double>& norm_distribution, bool target);
     int findSectorIdx(double angle);
-	void buildCost(std::vector<double>& cost_vec, int sector_index, double gaussian_shift, std::vector<int>& sector_array, double gaussian_weight, int w1, double w2);
+	void buildCost(std::vector<double>& cost_vec, int sector_index, double gaussian_shift, std::vector<int>& sector_array, double gaussian_weight, int w1, double w2,bool target);
 	double findGaussianWeight(double coeff[]);
     int search_closest(const std::vector<int>& sorted_array, int value);
     void update_goal_position();

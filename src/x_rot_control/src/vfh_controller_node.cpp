@@ -10,6 +10,22 @@ VFHController::VFHController(ros::NodeHandle* nodehandle):nh_(*nodehandle)
     ros::NodeHandle private_nh("~");
     private_nh.param<bool>("stop_mode", stop_mode, false);
 
+    private_nh.param<float>("speed_upper_lim", speed_upper_lim, 0.6);
+    private_nh.param<int>("window_size_param_max", window_size_param_max, 30);
+    private_nh.param<int>("num_of_sector", num_of_sector, 180);
+    private_nh.param<float>("k_ref_dir", k_ref_dir, 0.05);
+    private_nh.param<float>("prev_dir_weight", prev_dir_weight, 0.1);
+    private_nh.param<float>("target_dir_weight_initial", target_dir_weight_initial, 0.1);
+    private_nh.param<float>("obstacle_weight", obstacle_weight, 0.97);
+    private_nh.param<float>("inflation_radius", inflation_radius, 0.6);
+    private_nh.param<float>("bound_ang", bound_ang, 90);
+    private_nh.param<double>("direction_speed_lim", direction_speed_lim, 10);
+    private_nh.param<double>("direction_gain_multi", direction_gain_multi, 0.1);
+    private_nh.param<double>("direction_gain_offset", direction_gain_offset, 0.3);
+    private_nh.param<double>("speed_gain_multi", speed_gain_multi, 0.03);
+    private_nh.param<double>("speed_gain_offset", speed_gain_offset, 0.2);
+    private_nh.param<float>("max_detection_dist", max_detection_dist, 4);
+
     // FOR DETAILS OF THE DEFINITION OF EACH PARAMETER SEE 'vfh_controller_node.hpp'
     node_frequency = 10;
     // persistency map parameters
@@ -27,7 +43,7 @@ VFHController::VFHController(ros::NodeHandle* nodehandle):nh_(*nodehandle)
     ctrl_word = 0; 
     alarm_on = 0;
     stop = 0;
-    max_detection_dist = 4;
+    // max_detection_dist = 4;
     max_angle_dist = 20;
     stop_distance = 1;
     min_dist = 100;
@@ -35,28 +51,28 @@ VFHController::VFHController(ros::NodeHandle* nodehandle):nh_(*nodehandle)
 	direction = 0;
     prev_direction = 0;
     direction_gain = 0.7;
-    direction_gain_multi = 0.5;
-    direction_gain_offset = 0.3;
+    // direction_gain_multi = 0.5;
+    // direction_gain_offset = 0.3;
     direction_gain_max = 1;
-    speed_gain_multi = 0.03;
-    speed_gain_offset = 0.2;
+    // speed_gain_multi = 0.03;
+    // speed_gain_offset = 0.2;
     direction_speed_lim = 10;
     // local planner parameters - linear speed
-    speed_upper_lim = 0.8;
+    // speed_upper_lim = 0.8;
 	speed_cmd = 0;
     speed_cmd_prev = 0;
     linear_accel_lim = 1;
     speed_lower_lim = 0;
     speed_gain = (speed_upper_lim - speed_lower_lim)/(max_detection_dist - stop_distance);
     // local planner parameters - costs
-    num_of_sector = 180;
-    window_size_param = 20;
+    // num_of_sector = 180;
+    window_size_param = 1;
     sector_width = 360/(float)num_of_sector;
-    obstacle_weight = 0.95;
-    target_dir_weight = 0.1;
-    k_ref_dir = 0.05;
-    prev_dir_weight = 0.2;
-    inflation_radius = 0.7;
+    // obstacle_weight = 0.95;
+    // target_dir_weight = 0.1;
+    // k_ref_dir = 0.05;
+    // prev_dir_weight = 0.2;
+    // inflation_radius = 0.7;
     // local planner parameters - directions weights inversion
     weight_inversion_lat_dist = 0.3;
     weights_inverted = false;
@@ -102,7 +118,7 @@ void VFHController::reconfigureCallback(x_rot_control::x_rot_controlConfig &conf
     consensus_th = config.consensus_th;
     // local planner costs parameters
     num_of_sector = config.num_of_sector;
-    window_size_param = config.window_size_param;
+    window_size_param_max = config.window_size_param_max;
     obstacle_weight = config.obstacle_weight;
     target_dir_weight = config.target_dir_weight;
     k_ref_dir = config.k_ref_dir;
@@ -158,6 +174,10 @@ void VFHController::initializePublishers()
     local_planner_pub_ = nh_.advertise<geometry_msgs::Twist>("/yape/cmd_vel", 1, true); 
     cloud_pub_ = nh_.advertise<sensor_msgs::PointCloud2> ("/map_debug_output", 1);
     overall_cost_pub_ = nh_.advertise<std_msgs::Float64MultiArray> ("/cost_debug_output", 1);
+    obst_cost_pub_ = nh_.advertise<std_msgs::Float64MultiArray> ("/obst_debug_output", 1);
+    target_cost_pub_ = nh_.advertise<std_msgs::Float64MultiArray> ("/target_debug_output", 1);
+    prev_cost_pub_ = nh_.advertise<std_msgs::Float64MultiArray> ("/prev_debug_output", 1);
+
     debug_pub_ = nh_.advertise<std_msgs::Float64MultiArray> ("/var_debug_output", 1);
     goal_pose_pub_ = nh_.advertise<geometry_msgs::PoseStamped> ("/goal_pose",1);
     ref_dir_pose_pub_ = nh_.advertise<geometry_msgs::PoseStamped> ("/ref_dir_pose",1);
@@ -410,7 +430,7 @@ void VFHController::update_pers_map(){
     }
 }
 
-void VFHController::normpdf(const std::vector<int>& sector_array, int sector_index, double gaussian_weight, std::vector<double>& norm_distribution) {
+void VFHController::normpdf(const std::vector<int>& sector_array, int sector_index, double gaussian_weight, std::vector<double>& norm_distribution, bool target) {
   double k;
   double t;
   int b_k;
@@ -418,7 +438,11 @@ void VFHController::normpdf(const std::vector<int>& sector_array, int sector_ind
     k = 1.0 + (((double)b_k) * 1.0);
     if (gaussian_weight > 0.0) {
       t = (sector_array[((int)k) - 1] - sector_index) / gaussian_weight;
-      norm_distribution[((int)k) - 1] = exp((-0.5 * t) * t) / (2.5066282746310002 * gaussian_weight);
+      if(target)
+        norm_distribution[((int)k) - 1] = exp((-0.5 * t) * t) / (2.5066282746310002 * gaussian_weight/2);
+      else
+        norm_distribution[((int)k) - 1] = exp((-0.5 * t) * t) / (2.5066282746310002 * gaussian_weight);
+        
     } else {
       norm_distribution[((int)k) - 1] = 0.0;
     }
@@ -440,7 +464,7 @@ int VFHController::findSectorIdx(double angle) {
     return sector_index;
 }
 
-void VFHController::buildCost(std::vector<double>& cost_vec, int sector_index, double gaussian_shift, std::vector<int>& sector_array, double gaussian_weight, int w1, double w2) {
+void VFHController::buildCost(std::vector<double>& cost_vec, int sector_index, double gaussian_shift, std::vector<int>& sector_array, double gaussian_weight, int w1, double w2,bool target=false) {
     double sector_value = sector_index-gaussian_shift;
     int max_idx = -1000;
     for (int j=0; j<num_of_sector; j++) {
@@ -450,7 +474,7 @@ void VFHController::buildCost(std::vector<double>& cost_vec, int sector_index, d
     }
     
     std::vector<double> gaussian_distribution(num_of_sector);
-    normpdf(sector_array,sector_index,gaussian_weight,gaussian_distribution);
+    normpdf(sector_array,sector_index,gaussian_weight,gaussian_distribution,target);
     if (max_idx < num_of_sector) {
         int start_ind = num_of_sector - max_idx - 1;
         for (int j=0; j<max_idx; j++) {
@@ -633,13 +657,17 @@ void VFHController::vfhController() {
     double x_value = 1000;
     double y_value = 1000;
     double min_stop_dist = 100;
-    min_dist = 100;    
+    min_dist = 100;
+    min_dist_allFOV = 100;    
 
     for (int i=0; i<data_length; i++) {
 
         double eucl_dist = sqrt(pow(meas_x_filtered[i],2) + pow(meas_y_filtered[i],2));
         double ang = 180/M_PI*atan2(meas_y_filtered[i],meas_x_filtered[i]); // VERIFICA CON PUNTI RADAR VERO
         
+        if(eucl_dist<min_dist_allFOV)
+            min_dist_allFOV = eucl_dist;
+
         if(abs(ang)<max_angle_dist && eucl_dist<min_dist)
             min_dist = eucl_dist;
 
@@ -709,7 +737,7 @@ void VFHController::vfhController() {
             ang = ang + 360;
         
         sector_index = findSectorIdx(ang);
-        if (dist_to_associate[sector_index] > eucl_dist && eucl_dist < (max_detection_dist+2) )
+        if (dist_to_associate[sector_index] > eucl_dist && eucl_dist < (max_detection_dist*2) )
             dist_to_associate[sector_index] = eucl_dist;
         
     }
@@ -731,15 +759,32 @@ void VFHController::vfhController() {
     
     // build target direction cost
     sector_index = findSectorIdx(ref_direction);
-    buildCost(cost_target,sector_index,gaussian_shift,sector_array,gaussian_weight_target,1,-gaussian_weight_target);
+    buildCost(cost_target,sector_index,gaussian_shift,sector_array,gaussian_weight_target,1,-gaussian_weight_target,true);
     
     // build previous direction cost
-    sector_index = findSectorIdx(prev_direction);
+    double prev_direction_for_cost = prev_direction;
+    if(prev_direction_for_cost<0){
+        prev_direction_for_cost = 360 + prev_direction_for_cost;
+    }
+    sector_index = findSectorIdx(prev_direction_for_cost);
     buildCost(cost_prev,sector_index,gaussian_shift,sector_array,gaussian_weight_prev_dir,1,-gaussian_weight_prev_dir);
 
     // build obstacle cost and overall cost
     int ind = 0;
     int window_idx = 0;
+
+    
+    window_size_param = window_size_param_max;
+
+    // window_size_param = window_size_param_max+3 - min_dist_allFOV*window_size_param_max/max_detection_dist;
+    // if(min_dist_allFOV < 1)
+    //     window_size_param = window_size_param_max;
+    
+    // if(min_dist_allFOV >= max_detection_dist)
+    //     window_size_param = 3;
+
+    // cout<<window_size_param<<endl;
+
     int window_size = num_of_sector*window_size_param/360; // dispari
     if(window_size%2==0)
         window_size+=1;
@@ -750,14 +795,14 @@ void VFHController::vfhController() {
     else 
         ref_dir_weight = ref_direction;
 
-    target_dir_weight = prev_dir_weight + k_ref_dir * ref_dir_weight;
+    target_dir_weight = target_dir_weight_initial + k_ref_dir * (ref_dir_weight/180*M_PI * ref_dir_weight/180*M_PI);
 
     for (int k=0; k<num_of_sector; k++) {
         int ind = k;    
         for (int i = ind-(window_size/2); i < ind + (window_size/2)+1; i++) {
             if (i<0) window_idx = dist_to_associate.size()+i;
             else window_idx = (i % dist_to_associate.size());
-            cost_obstacle[k] += (1/dist_to_associate[window_idx]);
+            cost_obstacle[k] += (1/(sqrt(dist_to_associate[window_idx])));
         }
         cost_obstacle[k] = cost_obstacle[k] / window_size;    
         overall_cost[k] = obstacle_weight * cost_obstacle[k] + (target_dir_weight) * cost_target[k] + prev_dir_weight * cost_prev[k];   
@@ -766,16 +811,25 @@ void VFHController::vfhController() {
     // DEBUG - overall cost
     if (verbose) {
         std_msgs::Float64MultiArray overall_cost_debug;
+        std_msgs::Float64MultiArray obst_cost_debug;
+        std_msgs::Float64MultiArray target_cost_debug;
+        std_msgs::Float64MultiArray prev_cost_debug;
         for (int i=0; i<num_of_sector; i++) {
             overall_cost_debug.data.push_back(overall_cost[i]);
+            obst_cost_debug.data.push_back(sqrt(cost_obstacle[i]));
+            target_cost_debug.data.push_back(cost_target[i]);
+            prev_cost_debug.data.push_back(cost_prev[i]);
         }
         overall_cost_pub_.publish(overall_cost_debug);
+        obst_cost_pub_.publish(obst_cost_debug);
+        target_cost_pub_.publish(target_cost_debug);
+        prev_cost_pub_.publish(prev_cost_debug);
     }
   
     // get min cost and direction
     std::vector<int> vec;
     std::vector<int> bounds;
-    float bound_ang = 90; // deg
+    
     boundaries[0] = int(bound_ang/sector_width);
     boundaries[1] = num_of_sector - int(bound_ang/sector_width);
     
@@ -863,7 +917,7 @@ void VFHController::local_planner_pub() {
             for (int i=0; i<num_of_sector; i++) {
                 overall_cost_debug.data.push_back(overall_cost[i]);
             }
-            overall_cost_pub_.publish(overall_cost_debug);
+            // overall_cost_pub_.publish(overall_cost_debug);
         }
     }
     
@@ -880,15 +934,17 @@ void VFHController::local_planner_pub() {
     double angular_speed = direction_gain*direction*M_PI/180.0;
     if (abs(angular_speed) > speed_upper_lim/2) 
         angular_speed = angular_speed/abs(angular_speed)*speed_upper_lim/2; 
-
+    
     speed_gain = speed_gain_offset - speed_gain_multi*abs(ref_dir-direction)*M_PI/180;
-    if (speed_gain<0.1)
-        speed_gain = 0.1;
-    double min_dist_speed = (speed_gain * (min_dist - stop_distance));
+    if (speed_gain<0.05)
+        speed_gain = 0.05;
 
     double goal_dist_speed = speed_upper_lim;
     if (dist_from_point>0)
         goal_dist_speed = speed_gain*dist_from_point;
+
+    speed_gain = (speed_upper_lim - speed_lower_lim)/(max_detection_dist - stop_distance);
+    double min_dist_speed = (speed_gain * (min_dist - stop_distance));
 
     if (ctrl_word) 
         speed_cmd = min(min(min_dist_speed,speed_upper_lim-abs(angular_speed)),goal_dist_speed);
@@ -903,12 +959,12 @@ void VFHController::local_planner_pub() {
     if (speed_cmd < 0)
         speed_cmd = 0;
 
-    // if (stop && !path_point_received){
-    //     direction = 0;
-    //     angular_speed = direction_gain*direction*M_PI/180.0;
-    //     speed_cmd = 0.5;
-    // }
-    if (stop){
+    if (stop && !path_point_received){
+        direction = 0;
+        angular_speed = direction_gain*direction*M_PI/180.0;
+        speed_cmd = 0.5;
+    }
+    else if (stop && path_point_received){
         direction = 0;
         speed_cmd = 0;
     }
@@ -933,7 +989,10 @@ void VFHController::local_planner_pub() {
         var_debug.data.push_back(boundaries[1]);
         var_debug.data.push_back(alarm_on);
         var_debug.data.push_back(direction_gain);
-        var_debug.data.push_back(speed_gain);        
+        var_debug.data.push_back(speed_gain);
+        var_debug.data.push_back(prev_direction);
+        var_debug.data.push_back(min_dist_allFOV);
+        var_debug.data.push_back(target_dir_weight);
         debug_pub_.publish(var_debug);
     }
 
